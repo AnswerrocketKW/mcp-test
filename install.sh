@@ -192,7 +192,7 @@ install_mcp_server() {
     fi
     
     # Install the server with environment variables
-    mcp install server.py -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN"
+    mcp install server.py -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN" --with answerrocket-client
     
     print_success "MCP server installed successfully!"
 }
