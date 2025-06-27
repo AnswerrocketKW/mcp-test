@@ -175,14 +175,10 @@ setup_python_env() {
     # Install dependencies
     print_info "Installing dependencies..."
     
-    # Check if pyproject.toml exists and install from it, otherwise install mcp[cli]
-    if [[ -f "pyproject.toml" ]]; then
-        pip install -e .
-        print_success "Installed dependencies from pyproject.toml"
-    else
-        pip install "mcp[cli]"
-        print_success "Installed mcp[cli]"
-    fi
+    # Install mcp[cli] directly instead of editable installation
+    pip install "mcp[cli]"
+    pip install answerrocket-client
+    print_success "Installed mcp[cli]"
     
     # Install answerrocket-client
     print_info "Installing answerrocket-client..."
