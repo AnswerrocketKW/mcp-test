@@ -168,16 +168,11 @@ setup_python_env() {
     
     print_success "Virtual environment created and activated"
     
-    # Upgrade pip
-    print_info "Upgrading pip..."
-    pip install --upgrade pip
-    
     # Install dependencies
     print_info "Installing dependencies..."
     
     # Install mcp[cli] directly instead of editable installation
     pip install "mcp[cli]"
-    pip install answerrocket-client
     print_success "Installed mcp[cli]"
     
     # Install answerrocket-client
