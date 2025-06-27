@@ -5,5 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10.7"
 dependencies = [
+    "answerrocket-client>=0.2.56",
     "mcp[cli]>=1.10.1",
 ]
