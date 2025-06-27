@@ -144,7 +144,7 @@ setup_project() {
     
     # Clone the repository
     print_info "Cloning repository..."
-    git clone https://github.com/answerrocket/mcp-server-demo.git "$PROJECT_DIR"
+    git clone https://github.com/AnswerrocketKW/mcp-test.git "$PROJECT_DIR"
     cd "$PROJECT_DIR"
     
     print_success "Repository cloned to $PROJECT_DIR"

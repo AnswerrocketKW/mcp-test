@@ -14,7 +14,7 @@ An MCP (Model Context Protocol) server that provides access to AnswerRocket's an
 Install the AnswerRocket MCP Server with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AnswerrocketKW/mcp-test/refs/heads/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AnswerrocketKW/mcp-test/refs/heads/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh
 ```
 
 The installer will:
