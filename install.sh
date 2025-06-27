@@ -77,7 +77,7 @@ get_user_input() {
     # Get AnswerRocket URL
     while true; do
         echo -n "Please enter your AnswerRocket URL (e.g., https://your-instance.answerrocket.com): "
-        read -r AR_URL
+        read -r AR_URL </dev/tty
         
         if [[ -z "$AR_URL" ]]; then
             print_warning "URL cannot be empty. Please try again."
@@ -109,7 +109,7 @@ get_user_input() {
     # Get API Token
     while true; do
         echo -n "Please paste your AnswerRocket API token: "
-        read -r AR_TOKEN
+        read -r AR_TOKEN </dev/tty
         
         if [[ -z "$AR_TOKEN" ]]; then
             print_warning "API token cannot be empty. Please try again."
@@ -132,7 +132,7 @@ setup_project() {
     if [[ -d "$PROJECT_DIR" ]]; then
         print_warning "Directory $PROJECT_DIR already exists."
         echo -n "Do you want to remove it and reinstall? (y/N): "
-        read -r CONFIRM
+        read -r CONFIRM </dev/tty
         if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
             rm -rf "$PROJECT_DIR"
             print_info "Removed existing directory"
