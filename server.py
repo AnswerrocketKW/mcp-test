@@ -249,66 +249,8 @@ async def run_skill(skill_name: str, parameters: Optional[Dict[str, Any]] = None
         }
 
 
-# Dynamically create skill-specific tools
-def create_skill_tools():
-    """Create dynamic tools for each skill in the copilot."""
-    try:
-        # Create AnswerRocket client
-        ar_client = AnswerRocketClient(AR_URL, AR_TOKEN)
-        if not ar_client.can_connect():
-            print(f"Warning: Cannot connect to AnswerRocket to create skill tools")
-            return
-        
-        # Get copilot information
-        copilot_info = ar_client.config.get_copilot(True, COPILOT_ID)
-        if not copilot_info or not copilot_info.copilot_skill_ids:
-            print(f"Warning: No skills found for copilot {COPILOT_ID}")
-            return
-        
-        # Create a tool for each skill
-        for skill_id in (copilot_info.copilot_skill_ids or []):
-            try:
-                skill_info = ar_client.config.get_copilot_skill(True, COPILOT_ID, skill_id)
-                if not skill_info:
-                    continue
-                
-                skill_name = str(skill_info.name or skill_id)
-                skill_description = str(skill_info.description or skill_info.detailed_description or f"Run the {skill_name} skill")
-                
-                # Create a closure to capture the current skill_name
-                def make_skill_tool(name: str, desc: str):
-                    async def skill_tool_func(parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-                        return await run_skill(name, parameters)
-                    
-                    skill_tool_func.__name__ = f"run_{name.lower().replace(' ', '_').replace('-', '_')}"
-                    skill_tool_func.__doc__ = f"""
-                    Run the {name} skill.
-                    
-                    Args:
-                        parameters: Optional dictionary of parameters to pass to the skill
-                        
-                    Returns:
-                        Dict[str, Any]: Skill execution result
-                    """
-                    
-                    return skill_tool_func
-                
-                # Add the tool to the MCP server
-                skill_tool = make_skill_tool(skill_name, skill_description)
-                mcp.add_tool(
-                    skill_tool,
-                    description=f"{skill_description} (Skill: {skill_name})"
-                )
-                
-            except Exception as e:
-                print(f"Warning: Could not create tool for skill {skill_id}: {e}")
-                
-    except Exception as e:
-        print(f"Warning: Error creating skill tools: {e}")
-
-
-# Create skill tools on startup
-create_skill_tools()
+# Dynamic skill tool creation will be added in a future version
+# Currently focusing on core functionality with the basic tools above
 
 
 if __name__ == "__main__":

@@ -1,12 +1,14 @@
-# AnswerRocket MCP Server
+# AnswerRocket Multi-Copilot MCP Server
 
-An MCP (Model Context Protocol) server that provides access to AnswerRocket's analytics and insights platform. This server allows LLM clients to interact with AnswerRocket copilots, run skills, and ask questions directly.
+An MCP (Model Context Protocol) server that provides access to AnswerRocket's analytics and insights platform. This server automatically creates **separate MCP servers for each copilot** in your AnswerRocket instance, allowing dedicated, focused interactions with individual copilots through LLM clients.
 
 ## Features
 
-- 🤖 **Copilot Management**: Get information about available copilots and their capabilities
-- 🛠️ **Skill Operations**: List, inspect, and run specific skills within copilots
-- 💬 **Interactive Q&A**: Ask questions directly to AnswerRocket copilots and receive insights
+- 🚀 **Multi-Copilot Architecture**: Automatically creates separate MCP servers for each copilot in your AnswerRocket instance
+- 🎯 **Dedicated Copilot Servers**: Each copilot gets its own MCP server with copilot-specific tools and capabilities  
+- 🤖 **Copilot Management**: Get information about individual copilots and their capabilities
+- 🛠️ **Skill Operations**: List, inspect, and run specific skills within each copilot
+- 💬 **Interactive Q&A**: Ask questions directly to specific AnswerRocket copilots and receive insights
 - 📊 **Rich Responses**: Get both text responses and HTML artifacts for data visualizations
 
 ## Quick Install
@@ -22,8 +24,9 @@ The installer will:
 2. Prompt you for your AnswerRocket URL
 3. Guide you to generate an API key from your AnswerRocket instance
 4. Set up a Python virtual environment
-5. Install all dependencies
-6. Configure the MCP server with your credentials
+5. Install all dependencies (including AnswerRocket SDK from git repository)
+6. Discover all copilots in your AnswerRocket instance
+7. Create and install separate MCP servers for each copilot
 
 ## Manual Installation
 
@@ -52,7 +55,7 @@ If you prefer to install manually:
 3. **Install dependencies:**
    ```bash
    pip install -e .
-   pip install answerrocket-client
+   pip install "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
    ```
 
 4. **Get your API credentials:**
@@ -60,60 +63,75 @@ If you prefer to install manually:
    - Click "Generate" under "Client API Key"
    - Copy the generated API key
 
-5. **Install the MCP server:**
+5. **Create copilot metadata script:**
    ```bash
-   mcp install server.py -v AR_URL="{YOUR_AR_URL}" -v AR_TOKEN="{YOUR_API_TOKEN}"
+   python get_copilots.py "{YOUR_AR_URL}" "{YOUR_API_TOKEN}"
    ```
 
-## Available Tools
+6. **Install MCP servers for each copilot:**
+   ```bash
+   # This will create a separate server for each copilot
+   mcp install server.py -n "answerrocket-copilot-{COPILOT_ID}" -v AR_URL="{YOUR_AR_URL}" -v AR_TOKEN="{YOUR_API_TOKEN}" -v COPILOT_ID="{COPILOT_ID}" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
+   ```
 
-### `answer_rocket_ask_question`
-Ask a question to a specific AnswerRocket copilot and receive insights with visualizations.
+## Available Tools (Per Copilot Server)
+
+Each copilot gets its own dedicated MCP server with the following tools:
+
+### `ask_question`
+Ask a question to this specific AnswerRocket copilot and receive insights with visualizations.
 
 **Parameters:**
-- `copilot_id` (string): The ID of the copilot to ask
 - `fully_contextualized_question` (string): Your question with full context
 
 ### `get_copilot_info`
-Get detailed information about a copilot, including its available skills.
+Get detailed information about this copilot, including its available skills.
 
 **Parameters:**
-- `copilot_id` (string): The ID of the copilot
 - `use_published_version` (boolean, optional): Use published version (default: true)
 
-### `get_copilot_skill_info`
-Get detailed information about a specific skill within a copilot.
+### `get_skill_info`
+Get detailed information about a specific skill within this copilot.
 
 **Parameters:**
-- `copilot_id` (string): The ID of the copilot
 - `skill_id` (string): The ID of the skill
 - `use_published_version` (boolean, optional): Use published version (default: true)
 
-### `run_copilot_skill`
-Execute a specific skill with optional parameters.
+### `run_skill`
+Execute a specific skill within this copilot with optional parameters.
 
 **Parameters:**
-- `copilot_id` (string): The ID of the copilot
 - `skill_name` (string): The name of the skill to run
 - `parameters` (object, optional): Parameters to pass to the skill
+
+## How It Works
+
+The installer automatically:
+1. Discovers all copilots in your AnswerRocket instance
+2. Creates a separate MCP server for each copilot  
+3. Each server is named `answerrocket-copilot-{copilot-id}`
+4. Each server's tools are specific to that copilot (no need to specify copilot ID)
+
+**Benefits:**
+- ✅ Clean namespace separation per copilot
+- ✅ No need to specify copilot IDs in tool calls
+- ✅ Easy to manage individual copilot servers
+- ✅ Better organization for teams with multiple copilots
 
 ## Usage Examples
 
 ### Basic Question Asking
 ```javascript
-// Using the MCP client
-await callTool('answer_rocket_ask_question', {
-  copilot_id: 'your-copilot-id',
+// Using the copilot-specific MCP server (no copilot_id needed!)
+await callTool('ask_question', {
   fully_contextualized_question: 'What were our top performing products last quarter?'
 });
 ```
 
 ### Exploring Copilots
 ```javascript
-// Get copilot information
-const copilotInfo = await callTool('get_copilot_info', {
-  copilot_id: 'your-copilot-id'
-});
+// Get information about this copilot
+const copilotInfo = await callTool('get_copilot_info');
 
 // List available skills
 console.log('Available skills:', copilotInfo.skill_ids);
@@ -121,9 +139,8 @@ console.log('Available skills:', copilotInfo.skill_ids);
 
 ### Running Skills
 ```javascript
-// Run a specific skill
-await callTool('run_copilot_skill', {
-  copilot_id: 'your-copilot-id',
+// Run a specific skill on this copilot
+await callTool('run_skill', {
   skill_name: 'Revenue Analysis',
   parameters: {
     time_period: 'last_quarter',
@@ -134,28 +151,41 @@ await callTool('run_copilot_skill', {
 
 ## Configuration
 
-The server requires two environment variables:
+Each copilot server requires three environment variables:
 
 - `AR_URL`: Your AnswerRocket instance URL (e.g., `https://your-instance.answerrocket.com`)
 - `AR_TOKEN`: Your AnswerRocket API token
+- `COPILOT_ID`: The specific copilot ID for this server
 
-These are automatically configured during installation.
+These are automatically configured during installation. The installer:
+1. Discovers all copilots using the `get_copilots.py` script
+2. Creates a separate server for each copilot with its unique `COPILOT_ID`
+3. Names each server `answerrocket-copilot-{copilot-id}`
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"Cannot connect to AnswerRocket"**
+1. **"ERROR: No matching distribution found for mcp[cli]"**
+   - This is usually due to an old pip version
+   - The installer now automatically upgrades pip first
+   - If you still see this error, manually run: `python -m pip install --upgrade pip`
+
+2. **"Cannot connect to AnswerRocket"**
    - Verify your `AR_URL` is correct and accessible
    - Check that your `AR_TOKEN` is valid and not expired
 
-2. **"Python version not supported"**
+3. **"Python version not supported"**
    - Ensure you have Python 3.8 or higher installed
    - Try using `python3` instead of `python`
 
-3. **"mcp command not found"**
+4. **"mcp command not found"**
    - Make sure you've activated your virtual environment
    - Reinstall with `pip install "mcp[cli]"`
+
+5. **"No copilots found"**
+   - Check that your API token has the correct permissions
+   - Verify you can access copilots through the AnswerRocket web interface
 
 ### Getting Help
 

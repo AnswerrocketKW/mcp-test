@@ -171,14 +171,20 @@ setup_python_env() {
     # Install dependencies
     print_info "Installing dependencies..."
     
-    # Install mcp[cli] directly instead of editable installation
+    # First upgrade pip to latest version
+    print_info "Upgrading pip to latest version..."
+    $PYTHON_CMD -m pip install --upgrade pip
+    print_success "Pip upgraded successfully"
+    
+    # Install mcp[cli] using the correct syntax
+    print_info "Installing MCP with CLI support..."
     pip install "mcp[cli]"
     print_success "Installed mcp[cli]"
     
-    # Install local answerrocket-client
-    print_info "Installing local answerrocket-client..."
-    pip install -e /Users/answerrocket/Documents/answerrocket-python-client
-    print_success "Local answerrocket-client installed"
+    # Install answerrocket-client from git repository
+    print_info "Installing answerrocket-client from git repository..."
+    pip install "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
+    print_success "AnswerRocket client installed from git repository"
 }
 
 # Get copilot metadata
@@ -284,7 +290,7 @@ install_mcp_servers() {
             # Install the server with environment variables including COPILOT_ID
             SERVER_NAME="answerrocket-copilot-${copilot_id}"
             
-            if mcp install server.py -n "$SERVER_NAME" -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN" -v "COPILOT_ID=$copilot_id" --with "/Users/answerrocket/Documents/answerrocket-python-client"; then
+            if mcp install server.py -n "$SERVER_NAME" -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN" -v "COPILOT_ID=$copilot_id" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"; then
                 print_success "Installed MCP server: $SERVER_NAME"
                 INSTALLED_SERVERS+=("$SERVER_NAME ($copilot_name)")
             else

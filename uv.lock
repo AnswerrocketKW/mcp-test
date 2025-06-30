@@ -18,21 +18,13 @@ wheels = [
 
 [[package]]
 name = "answerrocket-client"
-source = { directory = "../answerrocket-python-client" }
+version = "0.2.57"
+source = { git = "ssh://git@github.com/answerrocket/answerrocket-python-client.git?rev=get-copilots-for-mcp#ea57266108fa2f59c2f3cd67226ede479923a466" }
 dependencies = [
     { name = "pandas" },
     { name = "sgqlc" },
     { name = "typing-extensions" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "pandas", specifier = ">=1.5.1" },
-    { name = "pytest", marker = "extra == 'test'" },
-    { name = "sgqlc" },
-    { name = "typing-extensions" },
-]
-provides-extras = ["test"]
 
 [[package]]
 name = "anyio"
@@ -241,7 +233,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "answerrocket-client", directory = "../answerrocket-python-client" },
+    { name = "answerrocket-client", git = "ssh://git@github.com/answerrocket/answerrocket-python-client.git?rev=get-copilots-for-mcp" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.10.1" },
 ]
 

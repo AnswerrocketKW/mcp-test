@@ -30,7 +30,7 @@ def main():
             sys.exit(1)
         
         # Get all copilots
-        copilots = ar_client.data.get_copilots()
+        copilots = ar_client.config.get_copilots()
         
         if not copilots:
             print("Error: No copilots found", file=sys.stderr)
