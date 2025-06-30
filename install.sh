@@ -272,8 +272,10 @@ install_mcp_servers() {
         if [[ -n "$copilot_id" ]]; then
             print_info "Installing MCP server for copilot: $copilot_name ($copilot_id)"
             
-            # Install the server with environment variables including COPILOT_ID
-            SERVER_NAME="answerrocket-copilot-${copilot_id}"
+            # Create safe server name from copilot name
+            # Remove special characters and spaces, convert to lowercase
+            SAFE_COPILOT_NAME=$(echo "$copilot_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+            SERVER_NAME="${SAFE_COPILOT_NAME}-Assistant"
             
             if uv run mcp install server.py -n "$SERVER_NAME" -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN" -v "COPILOT_ID=$copilot_id" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"; then
                 print_success "Installed MCP server: $SERVER_NAME"
