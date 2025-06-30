@@ -78,13 +78,13 @@ If you prefer to install manually:
 
 6. **Create copilot metadata script:**
    ```bash
-   python get_copilots.py "{YOUR_AR_URL}" "{YOUR_API_TOKEN}"
+   uv run python get_copilots.py "{YOUR_AR_URL}" "{YOUR_API_TOKEN}"
    ```
 
 7. **Install MCP servers for each copilot:**
    ```bash
    # This will create a separate server for each copilot
-   mcp install server.py -n "answerrocket-copilot-{COPILOT_ID}" -v AR_URL="{YOUR_AR_URL}" -v AR_TOKEN="{YOUR_API_TOKEN}" -v COPILOT_ID="{COPILOT_ID}" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
+   uv run mcp install server.py -n "answerrocket-copilot-{COPILOT_ID}" -v AR_URL="{YOUR_AR_URL}" -v AR_TOKEN="{YOUR_API_TOKEN}" -v COPILOT_ID="{COPILOT_ID}" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
    ```
 
 ## Available Tools (Per Copilot Server)
@@ -194,8 +194,9 @@ These are automatically configured during installation. The installer:
    - Check your Python version with: `uv run python --version`
 
 4. **"mcp command not found"**
-   - Make sure you've activated your virtual environment
-   - Reinstall with `pip install "mcp[cli]"`
+   - Try running: `uv add "mcp[cli]"`
+   - Ensure your virtual environment is created with uv: `uv venv --python 3.10.7`
+   - Check if the installation was successful: `uv run mcp --help`
 
 5. **"No copilots found"**
    - Check that your API token has the correct permissions

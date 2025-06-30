@@ -260,9 +260,9 @@ for copilot in data:
 install_mcp_servers() {
     print_step "Installing MCP servers for each copilot..."
     
-    # Check if mcp command is available
-    if ! command_exists mcp; then
-        print_error "mcp command not found. Please ensure mcp[cli] is properly installed."
+    # Check if mcp command is available through uv
+    if ! uv run mcp --help > /dev/null 2>&1; then
+        print_error "mcp command not found in uv environment. Please ensure mcp[cli] is properly installed."
         exit 1
     fi
     
@@ -275,7 +275,7 @@ install_mcp_servers() {
             # Install the server with environment variables including COPILOT_ID
             SERVER_NAME="answerrocket-copilot-${copilot_id}"
             
-            if mcp install server.py -n "$SERVER_NAME" -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN" -v "COPILOT_ID=$copilot_id" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"; then
+            if uv run mcp install server.py -n "$SERVER_NAME" -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN" -v "COPILOT_ID=$copilot_id" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"; then
                 print_success "Installed MCP server: $SERVER_NAME"
                 INSTALLED_SERVERS+=("$SERVER_NAME ($copilot_name)")
             else
