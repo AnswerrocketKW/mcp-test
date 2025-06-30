@@ -3,22 +3,27 @@ from typing import Dict, Any, List, Optional
 from answer_rocket import AnswerRocketClient
 import os
 
-# Create an MCP server
-mcp = FastMCP("mcp-rocket-server")
+# Get environment variables
+AR_URL = os.getenv("AR_URL", "")
+AR_TOKEN = os.getenv("AR_TOKEN", "")
+COPILOT_ID = os.getenv("COPILOT_ID", "")
+
+if not COPILOT_ID:
+    raise ValueError("COPILOT_ID environment variable is required")
+
+# Create an MCP server with copilot-specific name
+mcp = FastMCP(f"mcp-rocket-server-{COPILOT_ID}")
 
 
 # Add a dynamic greeting resource
 @mcp.resource("greeting://{name}")
 def get_greeting(name: str) -> str:
     """Get a personalized greeting"""
-    return f"Hello, {name}!"
+    return f"Hello, {name}! This is the AnswerRocket MCP server for copilot {COPILOT_ID}."
 
-
-
-AR_URL = os.getenv("AR_URL", "")
-AR_TOKEN = os.getenv("AR_TOKEN", "")
 
 def ar_ask_question(copilot_id: str, question: str) -> Dict[str, Any]:
+    """Ask a question to AnswerRocket copilot."""
     # Create AnswerRocket client
     ar_client = AnswerRocketClient(AR_URL, AR_TOKEN)
     if ar_client.can_connect():
@@ -68,14 +73,13 @@ def ar_ask_question(copilot_id: str, question: str) -> Dict[str, Any]:
         }
 
 
-# Ask Question Tool (updated to accept copilot_id as parameter)
-@mcp.tool(description="Ask a question to a specific AnswerRocket copilot and get charts, graphs and insights.")
-async def answer_rocket_ask_question(copilot_id: str, fully_contextualized_question: str) -> Dict[str, Any]:
+# Ask Question Tool (automatically uses the configured copilot)
+@mcp.tool(description=f"Ask a question to AnswerRocket copilot {COPILOT_ID} and get charts, graphs and insights.")
+async def ask_question(fully_contextualized_question: str) -> Dict[str, Any]:
     """
-    A tool that provides charts, graphs and insights for user questions using a specific copilot.
+    A tool that provides charts, graphs and insights for user questions using this copilot.
     
     Args:
-        copilot_id: The ID of the copilot to ask the question to
         fully_contextualized_question: The user's question with full context
         
     Returns:
@@ -84,12 +88,10 @@ async def answer_rocket_ask_question(copilot_id: str, fully_contextualized_quest
     
     try:
         # Validate parameters
-        if not copilot_id or not isinstance(copilot_id, str):
-            raise ValueError("Copilot ID must be a non-empty string")
         if not fully_contextualized_question or not isinstance(fully_contextualized_question, str):
             raise ValueError("Question must be a non-empty string")
         
-        return ar_ask_question(copilot_id, fully_contextualized_question)
+        return ar_ask_question(COPILOT_ID, fully_contextualized_question)
         
     except Exception as e:
         error_message = f"Error in Ask Question tool: {str(e)}"
@@ -101,13 +103,12 @@ async def answer_rocket_ask_question(copilot_id: str, fully_contextualized_quest
 
 
 # Get Copilot Information Tool
-@mcp.tool(description="Get information about a specific copilot, including its available skills.")
-async def get_copilot_info(copilot_id: str, use_published_version: bool = True) -> Dict[str, Any]:
+@mcp.tool(description=f"Get information about copilot {COPILOT_ID}, including its available skills.")
+async def get_copilot_info(use_published_version: bool = True) -> Dict[str, Any]:
     """
-    Get detailed information about a copilot including its available skills.
+    Get detailed information about this copilot including its available skills.
     
     Args:
-        copilot_id: The ID of the copilot to get information about
         use_published_version: Whether to use the published version of the copilot (default: True)
         
     Returns:
@@ -115,21 +116,17 @@ async def get_copilot_info(copilot_id: str, use_published_version: bool = True) 
     """
     
     try:
-        # Validate parameters
-        if not copilot_id or not isinstance(copilot_id, str):
-            raise ValueError("Copilot ID must be a non-empty string")
-        
         # Create AnswerRocket client
         ar_client = AnswerRocketClient(AR_URL, AR_TOKEN)
         if not ar_client.can_connect():
             raise ValueError("Cannot connect to AnswerRocket")
         
         # Get copilot information
-        copilot_info = ar_client.config.get_copilot(use_published_version, copilot_id)
+        copilot_info = ar_client.config.get_copilot(use_published_version, COPILOT_ID)
         
         if not copilot_info:
             return {
-                "error": f"Copilot with ID '{copilot_id}' not found"
+                "error": f"Copilot with ID '{COPILOT_ID}' not found"
             }
         
         return {
@@ -149,13 +146,12 @@ async def get_copilot_info(copilot_id: str, use_published_version: bool = True) 
 
 
 # Get Copilot Skill Information Tool
-@mcp.tool(description="Get detailed information about a specific skill within a copilot.")
-async def get_copilot_skill_info(copilot_id: str, skill_id: str, use_published_version: bool = True) -> Dict[str, Any]:
+@mcp.tool(description=f"Get detailed information about a specific skill within copilot {COPILOT_ID}.")
+async def get_skill_info(skill_id: str, use_published_version: bool = True) -> Dict[str, Any]:
     """
     Get detailed information about a specific skill.
     
     Args:
-        copilot_id: The ID of the copilot that contains the skill
         skill_id: The ID of the skill to get information about
         use_published_version: Whether to use the published version of the skill (default: True)
         
@@ -165,8 +161,6 @@ async def get_copilot_skill_info(copilot_id: str, skill_id: str, use_published_v
     
     try:
         # Validate parameters
-        if not copilot_id or not isinstance(copilot_id, str):
-            raise ValueError("Copilot ID must be a non-empty string")
         if not skill_id or not isinstance(skill_id, str):
             raise ValueError("Skill ID must be a non-empty string")
         
@@ -176,11 +170,11 @@ async def get_copilot_skill_info(copilot_id: str, skill_id: str, use_published_v
             raise ValueError("Cannot connect to AnswerRocket")
         
         # Get skill information
-        skill_info = ar_client.config.get_copilot_skill(use_published_version, copilot_id, skill_id)
+        skill_info = ar_client.config.get_copilot_skill(use_published_version, COPILOT_ID, skill_id)
         
         if not skill_info:
             return {
-                "error": f"Skill with ID '{skill_id}' not found in copilot '{copilot_id}'"
+                "error": f"Skill with ID '{skill_id}' not found in copilot '{COPILOT_ID}'"
             }
         
         return {
@@ -209,13 +203,12 @@ async def get_copilot_skill_info(copilot_id: str, skill_id: str, use_published_v
 
 
 # Run Copilot Skill Tool
-@mcp.tool(description="Run a specific skill with optional parameters.")
-async def run_copilot_skill(copilot_id: str, skill_name: str, parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+@mcp.tool(description=f"Run a specific skill within copilot {COPILOT_ID} with optional parameters.")
+async def run_skill(skill_name: str, parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Run a specific skill within a copilot.
+    Run a specific skill within this copilot.
     
     Args:
-        copilot_id: The ID of the copilot that contains the skill
         skill_name: The name of the skill to run
         parameters: Optional dictionary of parameters to pass to the skill
         
@@ -225,8 +218,6 @@ async def run_copilot_skill(copilot_id: str, skill_name: str, parameters: Option
     
     try:
         # Validate parameters
-        if not copilot_id or not isinstance(copilot_id, str):
-            raise ValueError("Copilot ID must be a non-empty string")
         if not skill_name or not isinstance(skill_name, str):
             raise ValueError("Skill name must be a non-empty string")
         
@@ -236,7 +227,7 @@ async def run_copilot_skill(copilot_id: str, skill_name: str, parameters: Option
             raise ValueError("Cannot connect to AnswerRocket")
         
         # Run the skill
-        skill_result = ar_client.skill.run(copilot_id, skill_name, parameters)
+        skill_result = ar_client.skill.run(COPILOT_ID, skill_name, parameters)
         
         if not skill_result.success:
             return {
@@ -258,7 +249,69 @@ async def run_copilot_skill(copilot_id: str, skill_name: str, parameters: Option
         }
 
 
+# Dynamically create skill-specific tools
+def create_skill_tools():
+    """Create dynamic tools for each skill in the copilot."""
+    try:
+        # Create AnswerRocket client
+        ar_client = AnswerRocketClient(AR_URL, AR_TOKEN)
+        if not ar_client.can_connect():
+            print(f"Warning: Cannot connect to AnswerRocket to create skill tools")
+            return
+        
+        # Get copilot information
+        copilot_info = ar_client.config.get_copilot(True, COPILOT_ID)
+        if not copilot_info or not copilot_info.copilot_skill_ids:
+            print(f"Warning: No skills found for copilot {COPILOT_ID}")
+            return
+        
+        # Create a tool for each skill
+        for skill_id in (copilot_info.copilot_skill_ids or []):
+            try:
+                skill_info = ar_client.config.get_copilot_skill(True, COPILOT_ID, skill_id)
+                if not skill_info:
+                    continue
+                
+                skill_name = str(skill_info.name or skill_id)
+                skill_description = str(skill_info.description or skill_info.detailed_description or f"Run the {skill_name} skill")
+                
+                # Create a closure to capture the current skill_name
+                def make_skill_tool(name: str, desc: str):
+                    async def skill_tool_func(parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                        return await run_skill(name, parameters)
+                    
+                    skill_tool_func.__name__ = f"run_{name.lower().replace(' ', '_').replace('-', '_')}"
+                    skill_tool_func.__doc__ = f"""
+                    Run the {name} skill.
+                    
+                    Args:
+                        parameters: Optional dictionary of parameters to pass to the skill
+                        
+                    Returns:
+                        Dict[str, Any]: Skill execution result
+                    """
+                    
+                    return skill_tool_func
+                
+                # Add the tool to the MCP server
+                skill_tool = make_skill_tool(skill_name, skill_description)
+                mcp.add_tool(
+                    skill_tool,
+                    description=f"{skill_description} (Skill: {skill_name})"
+                )
+                
+            except Exception as e:
+                print(f"Warning: Could not create tool for skill {skill_id}: {e}")
+                
+    except Exception as e:
+        print(f"Warning: Error creating skill tools: {e}")
+
+
+# Create skill tools on startup
+create_skill_tools()
+
+
 if __name__ == "__main__":
-    print("Starting MCP server")
+    print(f"Starting MCP server for copilot {COPILOT_ID}")
     mcp.run(transport='stdio')
-    print("that's it")
+    print("Server stopped")

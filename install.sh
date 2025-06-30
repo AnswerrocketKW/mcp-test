@@ -175,15 +175,99 @@ setup_python_env() {
     pip install "mcp[cli]"
     print_success "Installed mcp[cli]"
     
-    # Install answerrocket-client
-    print_info "Installing answerrocket-client..."
-    pip install answerrocket-client
-    print_success "answerrocket-client installed"
+    # Install local answerrocket-client
+    print_info "Installing local answerrocket-client..."
+    pip install -e /Users/answerrocket/Documents/answerrocket-python-client
+    print_success "Local answerrocket-client installed"
 }
 
-# Install MCP server
-install_mcp_server() {
-    print_step "Installing MCP server..."
+# Get copilot metadata
+get_copilot_metadata() {
+    print_step "Getting copilot metadata..."
+    
+    # Create a temporary script to get copilots
+    cat > get_copilots_temp.py << 'EOF'
+import sys
+import json
+from answer_rocket import AnswerRocketClient
+
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: python get_copilots_temp.py <AR_URL> <AR_TOKEN>", file=sys.stderr)
+        sys.exit(1)
+    
+    ar_url = sys.argv[1]
+    ar_token = sys.argv[2]
+    
+    try:
+        ar_client = AnswerRocketClient(ar_url, ar_token)
+        
+        if not ar_client.can_connect():
+            print("Error: Cannot connect to AnswerRocket", file=sys.stderr)
+            sys.exit(1)
+        
+        # Try to get copilots - use different methods that might be available
+        copilots = []
+        try:
+            # Method 1: Try get_copilots with published version
+            copilots = ar_client.config.get_copilots(True)
+        except AttributeError:
+            try:
+                # Method 2: Try get_copilots without parameter
+                copilots = ar_client.config.get_copilots()
+            except AttributeError:
+                print("Error: Could not find get_copilots method", file=sys.stderr)
+                sys.exit(1)
+        
+        if not copilots:
+            print("Error: No copilots found", file=sys.stderr)
+            sys.exit(1)
+        
+        copilot_list = []
+        for copilot in copilots:
+            copilot_data = {
+                "copilot_id": str(copilot.copilot_id),
+                "name": str(copilot.name or copilot.copilot_id),
+                "description": str(copilot.description or "")
+            }
+            copilot_list.append(copilot_data)
+        
+        print(json.dumps(copilot_list, indent=2))
+        
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+EOF
+    
+    # Run the script to get copilot metadata
+    COPILOT_JSON=$($PYTHON_CMD get_copilots_temp.py "$AR_URL" "$AR_TOKEN")
+    
+    if [[ $? -ne 0 ]]; then
+        print_error "Failed to get copilot metadata"
+        rm -f get_copilots_temp.py
+        exit 1
+    fi
+    
+    # Clean up temp script
+    rm -f get_copilots_temp.py
+    
+    # Parse the JSON to get copilot IDs and names
+    COPILOT_DATA=$(echo "$COPILOT_JSON" | $PYTHON_CMD -c "
+import sys, json
+data = json.load(sys.stdin)
+for copilot in data:
+    print(f\"{copilot['copilot_id']}|{copilot['name']}\")
+")
+    
+    print_success "Found $(echo "$COPILOT_DATA" | wc -l) copilots"
+}
+
+# Install MCP servers for each copilot
+install_mcp_servers() {
+    print_step "Installing MCP servers for each copilot..."
     
     # Check if mcp command is available
     if ! command_exists mcp; then
@@ -191,28 +275,55 @@ install_mcp_server() {
         exit 1
     fi
     
-    # Install the server with environment variables
-    mcp install server.py -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN" --with answerrocket-client
+    # Install a server for each copilot
+    INSTALLED_SERVERS=()
+    while IFS='|' read -r copilot_id copilot_name; do
+        if [[ -n "$copilot_id" ]]; then
+            print_info "Installing MCP server for copilot: $copilot_name ($copilot_id)"
+            
+            # Install the server with environment variables including COPILOT_ID
+            SERVER_NAME="answerrocket-copilot-${copilot_id}"
+            
+            if mcp install server.py -n "$SERVER_NAME" -v "AR_URL=$AR_URL" -v "AR_TOKEN=$AR_TOKEN" -v "COPILOT_ID=$copilot_id" --with "/Users/answerrocket/Documents/answerrocket-python-client"; then
+                print_success "Installed MCP server: $SERVER_NAME"
+                INSTALLED_SERVERS+=("$SERVER_NAME ($copilot_name)")
+            else
+                print_warning "Failed to install MCP server for copilot: $copilot_name"
+            fi
+        fi
+    done <<< "$COPILOT_DATA"
     
-    print_success "MCP server installed successfully!"
+    if [[ ${#INSTALLED_SERVERS[@]} -eq 0 ]]; then
+        print_error "No MCP servers were successfully installed"
+        exit 1
+    fi
+    
+    print_success "Successfully installed ${#INSTALLED_SERVERS[@]} MCP servers"
 }
 
 # Main installation function
 main() {
-    echo "🚀 AnswerRocket MCP Server Installer"
-    echo "===================================="
+    echo "🚀 AnswerRocket Multi-Copilot MCP Server Installer"
+    echo "================================================="
     
     check_requirements
     get_user_input
     setup_project
     setup_python_env
-    install_mcp_server
+    get_copilot_metadata
+    install_mcp_servers
     
     echo
     print_success "Installation completed successfully! 🎉"
     echo
-    print_info "Your MCP server is now installed and ready to use."
-    print_info "You can start using it with MCP-compatible clients like Claude Desktop."
+    print_info "Your MCP servers are now installed and ready to use."
+    print_info "Each copilot has its own dedicated MCP server:"
+    echo
+    for server in "${INSTALLED_SERVERS[@]}"; do
+        echo "  - $server"
+    done
+    echo
+    print_info "You can use these servers with MCP-compatible clients like Claude Desktop."
     echo
     print_info "Project location: $PROJECT_DIR"
     print_info "Configuration: AR_URL=$AR_URL"
