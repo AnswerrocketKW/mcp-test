@@ -20,13 +20,15 @@ curl -fsSL https://raw.githubusercontent.com/AnswerrocketKW/mcp-test/refs/heads/
 ```
 
 The installer will:
-1. Check system requirements (Python 3.8+, git, curl)
-2. Prompt you for your AnswerRocket URL
-3. Guide you to generate an API key from your AnswerRocket instance
-4. Set up a Python virtual environment
-5. Install all dependencies (including AnswerRocket SDK from git repository)
-6. Discover all copilots in your AnswerRocket instance
-7. Create and install separate MCP servers for each copilot
+1. Check system requirements (git, curl)
+2. Install uv package manager (if not already installed)
+3. Install and configure Python 3.10.7 using uv
+4. Prompt you for your AnswerRocket URL
+5. Guide you to generate an API key from your AnswerRocket instance
+6. Set up a Python virtual environment with uv
+7. Install all dependencies (including AnswerRocket SDK from git repository)
+8. Discover all copilots in your AnswerRocket instance
+9. Create and install separate MCP servers for each copilot
 
 ## Manual Installation
 
@@ -34,9 +36,11 @@ If you prefer to install manually:
 
 ### Prerequisites
 
-- Python 3.8 or higher
 - Git
+- curl (for downloading uv)
 - An AnswerRocket instance with API access
+
+**Note**: Python 3.10.7 will be automatically installed by the installer using uv.
 
 ### Steps
 
@@ -46,29 +50,38 @@ If you prefer to install manually:
    cd mcp-server-demo
    ```
 
-2. **Create and activate a virtual environment:**
+2. **Install uv package manager:**
    ```bash
-   python -m venv .venv
+   # macOS/Linux
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   
+   # Windows
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+
+3. **Create and activate a virtual environment with uv:**
+   ```bash
+   uv venv --python 3.10.7
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
-3. **Install dependencies:**
+4. **Install dependencies:**
    ```bash
-   pip install -e .
-   pip install "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
+   uv add "mcp[cli]"
+   uv add "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
    ```
 
-4. **Get your API credentials:**
+5. **Get your API credentials:**
    - Go to `{YOUR_AR_URL}/apps/chat/topics?panel=user-info`
    - Click "Generate" under "Client API Key"
    - Copy the generated API key
 
-5. **Create copilot metadata script:**
+6. **Create copilot metadata script:**
    ```bash
    python get_copilots.py "{YOUR_AR_URL}" "{YOUR_API_TOKEN}"
    ```
 
-6. **Install MCP servers for each copilot:**
+7. **Install MCP servers for each copilot:**
    ```bash
    # This will create a separate server for each copilot
    mcp install server.py -n "answerrocket-copilot-{COPILOT_ID}" -v AR_URL="{YOUR_AR_URL}" -v AR_TOKEN="{YOUR_API_TOKEN}" -v COPILOT_ID="{COPILOT_ID}" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
@@ -176,8 +189,9 @@ These are automatically configured during installation. The installer:
    - Check that your `AR_TOKEN` is valid and not expired
 
 3. **"Python version not supported"**
-   - Ensure you have Python 3.8 or higher installed
-   - Try using `python3` instead of `python`
+   - The installer should automatically install Python 3.10.7 using uv
+   - If you see this error, try running: `uv python install 3.10.7`
+   - Check your Python version with: `uv run python --version`
 
 4. **"mcp command not found"**
    - Make sure you've activated your virtual environment

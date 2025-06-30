@@ -35,6 +35,57 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Detect operating system
+detect_os() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        OS="macos"
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        OS="linux"
+    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        OS="windows"
+    else
+        print_error "Unsupported operating system: $OSTYPE"
+        exit 1
+    fi
+}
+
+# Install uv package manager
+install_uv() {
+    print_step "Installing uv package manager..."
+    
+    detect_os
+    
+    if command_exists uv; then
+        print_info "uv is already installed"
+        UV_VERSION=$(uv --version 2>/dev/null || echo "unknown")
+        print_success "uv version: $UV_VERSION"
+        return
+    fi
+    
+    case $OS in
+        "macos"|"linux")
+            print_info "Installing uv for $OS..."
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            # Add uv to PATH for current session
+            export PATH="$HOME/.cargo/bin:$PATH"
+            ;;
+        "windows")
+            print_info "Installing uv for Windows..."
+            powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+            ;;
+    esac
+    
+    # Verify installation
+    if command_exists uv; then
+        UV_VERSION=$(uv --version)
+        print_success "uv installed successfully: $UV_VERSION"
+    else
+        print_error "Failed to install uv. Please install manually and try again."
+        print_info "Visit: https://docs.astral.sh/uv/getting-started/installation/"
+        exit 1
+    fi
+}
+
 # Check requirements
 check_requirements() {
     print_step "Checking system requirements..."
@@ -49,24 +100,26 @@ check_requirements() {
         exit 1
     fi
     
-    # Check for Python
-    if command_exists python3; then
-        PYTHON_CMD="python3"
-    elif command_exists python; then
-        PYTHON_CMD="python"
-    else
-        print_error "Python is required but not installed. Please install Python 3.8+ and try again."
+    print_success "System requirements satisfied"
+}
+
+# Setup Python with uv
+setup_python() {
+    print_step "Setting up Python 3.10.7 with uv..."
+    
+    # Install Python 3.10.7 if not available
+    print_info "Installing Python 3.10.7..."
+    uv python install 3.10.7
+    
+    # Verify Python installation
+    PYTHON_VERSION=$(uv python list | grep "3.10.7" | head -1 | awk '{print $1}')
+    if [[ -z "$PYTHON_VERSION" ]]; then
+        print_error "Failed to install Python 3.10.7"
         exit 1
     fi
     
-    # Check Python version
-    PYTHON_VERSION=$($PYTHON_CMD -c "import sys; print('.'.join(map(str, sys.version_info[:2])))")
-    if ! $PYTHON_CMD -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
-        print_error "Python 3.8 or higher is required. Current version: $PYTHON_VERSION"
-        exit 1
-    fi
-    
-    print_success "All requirements satisfied (Python $PYTHON_VERSION)"
+    print_success "Python 3.10.7 installed successfully"
+    PYTHON_CMD="uv run python"
 }
 
 # Get user input
@@ -150,40 +203,33 @@ setup_project() {
     print_success "Repository cloned to $PROJECT_DIR"
 }
 
-# Setup Python environment
+# Setup Python environment with uv
 setup_python_env() {
-    print_step "Setting up Python virtual environment..."
+    print_step "Setting up Python virtual environment with uv..."
     
-    # Create virtual environment
-    $PYTHON_CMD -m venv .venv
-    
-    # Activate virtual environment
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        # Windows
-        source .venv/Scripts/activate
-    else
-        # Unix/Linux/macOS
-        source .venv/bin/activate
+    # Initialize uv project if pyproject.toml doesn't exist
+    if [[ ! -f "pyproject.toml" ]]; then
+        print_info "Initializing uv project..."
+        uv init --python 3.10.7
     fi
     
-    print_success "Virtual environment created and activated"
+    # Create virtual environment with uv
+    print_info "Creating virtual environment..."
+    uv venv --python 3.10.7
     
-    # Install dependencies
-    print_info "Installing dependencies..."
+    print_success "Virtual environment created with Python 3.10.7"
     
-    # First upgrade pip to latest version
-    print_info "Upgrading pip to latest version..."
-    $PYTHON_CMD -m pip install --upgrade pip
-    print_success "Pip upgraded successfully"
+    # Install dependencies using uv
+    print_info "Installing dependencies with uv..."
     
-    # Install mcp[cli] using the correct syntax
+    # Install mcp[cli] using uv
     print_info "Installing MCP with CLI support..."
-    pip install "mcp[cli]"
+    uv add "mcp[cli]"
     print_success "Installed mcp[cli]"
     
     # Install answerrocket-client from git repository
     print_info "Installing answerrocket-client from git repository..."
-    pip install "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
+    uv add "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
     print_success "AnswerRocket client installed from git repository"
 }
 
@@ -249,7 +295,7 @@ if __name__ == "__main__":
 EOF
     
     # Run the script to get copilot metadata
-    COPILOT_JSON=$($PYTHON_CMD get_copilots_temp.py "$AR_URL" "$AR_TOKEN")
+    COPILOT_JSON=$(uv run python get_copilots_temp.py "$AR_URL" "$AR_TOKEN")
     
     if [[ $? -ne 0 ]]; then
         print_error "Failed to get copilot metadata"
@@ -261,7 +307,7 @@ EOF
     rm -f get_copilots_temp.py
     
     # Parse the JSON to get copilot IDs and names
-    COPILOT_DATA=$(echo "$COPILOT_JSON" | $PYTHON_CMD -c "
+    COPILOT_DATA=$(echo "$COPILOT_JSON" | uv run python -c "
 import sys, json
 data = json.load(sys.stdin)
 for copilot in data:
@@ -313,8 +359,10 @@ main() {
     echo "================================================="
     
     check_requirements
+    install_uv
     get_user_input
     setup_project
+    setup_python
     setup_python_env
     get_copilot_metadata
     install_mcp_servers
