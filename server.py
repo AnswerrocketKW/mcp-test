@@ -1,4 +1,5 @@
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from typing import Dict, Any, List, Optional
 from answer_rocket import AnswerRocketClient
 import os
@@ -44,30 +45,101 @@ COPILOT_NAME = str(copilot_info.name) if copilot_info and copilot_info.name else
 mcp = FastMCP(COPILOT_NAME)
 
 
-def create_skill_tool(skill_info):
-    """Create a tool function for a specific skill."""
+def extract_skill_parameters(skill_info):
+    """Extract parameters directly from skill object."""
+    parameters = {}
+    
+    try:
+        # Get parameters directly from the skill object
+        if hasattr(skill_info, 'parameters') and skill_info.parameters:
+            # Handle potential Field objects or direct values
+            skill_params = skill_info.parameters
+            if hasattr(skill_params, '__iter__') and not isinstance(skill_params, str):
+                # If it's iterable (list/dict), use it directly
+                if isinstance(skill_params, dict):
+                    parameters = skill_params
+                elif isinstance(skill_params, list):
+                     # Convert list of parameter objects to dict
+                     for param in skill_params:
+                         if hasattr(param, 'name'):
+                             param_name = str(param.name)
+                             # Check if it's multi-value (list of strings) or single string
+                             is_multi = bool(getattr(param, 'is_multi', False))
+                             param_type = "array" if is_multi else "string"
+                             
+                             param_config = {
+                                 'type': param_type,
+                                 'description': str(getattr(param, 'description', '')),
+                                 'required': bool(getattr(param, 'required', False))
+                             }
+                             parameters[param_name] = param_config
+                        
+    except Exception as e:
+        print(f"Warning: Error extracting parameters from skill: {e}")
+    
+    return parameters
+
+
+def create_skill_tool_with_annotations(skill_info):
+    """Create a tool function and annotations for a specific skill."""
     skill_id = str(skill_info.copilot_skill_id)
     skill_name = str(skill_info.name)
     skill_description = str(skill_info.description or skill_info.detailed_description or f"Execute {skill_name} skill")
     
-    async def skill_tool_function(parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Execute this AnswerRocket skill.
-        
-        Args:
-            parameters: Optional dictionary of parameters to pass to the skill
+    # Extract parameters from skill nodes
+    skill_parameters = extract_skill_parameters(skill_info)
+    
+    # Create ToolAnnotations
+    tool_parameters = {}
+    
+    if skill_parameters:
+        for param_name, param_info in skill_parameters.items():
+            # Handle different parameter info formats
+            param_description = ""
+            param_type = "string"  # default
+            required = False
             
-        Returns:
-            Dict[str, Any]: Skill execution result
-        """
+            if isinstance(param_info, dict):
+                param_description = param_info.get('description', '')
+                param_type = param_info.get('type', 'string')
+                required = param_info.get('required', False)
+            elif isinstance(param_info, str):
+                param_description = param_info
+            
+            # Only two types: string or array of strings
+            mcp_type = "array" if param_type == "array" else "string"
+            
+            tool_parameters[param_name] = {
+                "type": mcp_type,
+                "description": param_description,
+                "required": required
+            }
+    
+    # Create annotations
+    annotations = ToolAnnotations() if tool_parameters else None
+    if annotations and tool_parameters:
+        # Set parameters directly on the annotations object
+        for param_name, param_config in tool_parameters.items():
+            setattr(annotations, param_name, param_config)
+    
+    # Create the tool function
+    async def skill_tool_function(**kwargs) -> Dict[str, Any]:
+        """Execute this AnswerRocket skill with its specific parameters."""
         try:
+            # Filter kwargs to only include expected parameters
+            if skill_parameters:
+                filtered_params = {k: v for k, v in kwargs.items() if k in skill_parameters}
+            else:
+                # If no specific parameters, treat all kwargs as parameters
+                filtered_params = kwargs
+            
             # Create AnswerRocket client
             ar_client = AnswerRocketClient(AR_URL, AR_TOKEN)
             if not ar_client.can_connect():
                 raise ValueError("Cannot connect to AnswerRocket")
             
             # Run the skill
-            skill_result = ar_client.skill.run(COPILOT_ID, skill_name, parameters)
+            skill_result = ar_client.skill.run(COPILOT_ID, skill_name, filtered_params)
             
             if not skill_result.success:
                 return {
@@ -75,7 +147,8 @@ def create_skill_tool(skill_info):
                     "error": skill_result.error,
                     "code": skill_result.code,
                     "skill_name": skill_name,
-                    "skill_id": skill_id
+                    "skill_id": skill_id,
+                    "parameters_used": filtered_params
                 }
             
             return {
@@ -83,7 +156,8 @@ def create_skill_tool(skill_info):
                 "data": skill_result.data,
                 "code": skill_result.code,
                 "skill_name": skill_name,
-                "skill_id": skill_id
+                "skill_id": skill_id,
+                "parameters_used": filtered_params
             }
             
         except Exception as e:
@@ -91,92 +165,14 @@ def create_skill_tool(skill_info):
                 "success": False,
                 "error": f"Error running skill {skill_name}: {str(e)}",
                 "skill_name": skill_name,
-                "skill_id": skill_id
+                "skill_id": skill_id,
+                "parameters_attempted": kwargs
             }
     
-    return skill_tool_function
+    return skill_tool_function, annotations, tool_parameters
 
 
-def create_chat_skill_tool(skill_info):
-    """Create a chat-based tool function for a specific skill."""
-    skill_id = str(skill_info.copilot_skill_id)
-    skill_name = str(skill_info.name)
-    skill_description = str(skill_info.description or skill_info.detailed_description or f"Ask questions to {skill_name} skill")
-    
-    async def chat_skill_tool_function(question: str) -> Dict[str, Any]:
-        """
-        Ask a question to this AnswerRocket skill and get insights with visualizations.
-        
-        Args:
-            question: The question to ask this skill
-            
-        Returns:
-            Dict[str, Any]: Response with chat_reply and artifact html for display
-        """
-        try:
-            # Validate parameters
-            if not question or not isinstance(question, str):
-                raise ValueError("Question must be a non-empty string")
-            
-            # Create AnswerRocket client
-            ar_client = AnswerRocketClient(AR_URL, AR_TOKEN)
-            if not ar_client.can_connect():
-                raise ValueError("Cannot connect to AnswerRocket")
-            
-            # Ask question using the chat interface
-            skill_reply = ar_client.chat.ask_question(COPILOT_ID, question)
 
-            # Check if the response has an error
-            error_msg = getattr(getattr(skill_reply, 'answer', None), 'error', None)
-            if error_msg:
-                return {
-                    "chat_reply": f"An error occurred: {error_msg}",
-                    "artifact_html": "Error from AnswerRocket",
-                    "skill_name": skill_name,
-                    "skill_id": skill_id
-                }
-
-            # Extract message and payload
-            answer = getattr(skill_reply, 'answer', None)
-            message = getattr(answer, 'message', 'No message available') if answer else "No message available"
-            
-            # Extract custom payload if available
-            payload = None
-            if answer and hasattr(answer, 'report_results'):
-                report_results = getattr(answer, 'report_results', [])
-                if report_results and len(report_results) > 0:
-                    payload = getattr(report_results[0], 'custom_payload', None)
-            
-            tabs = None
-            if isinstance(payload, dict) and "tabs" in payload:
-                if isinstance(payload["tabs"], dict) and "tabs" in payload["tabs"]:
-                    tabs = payload["tabs"]["tabs"] or []
-                elif isinstance(payload["tabs"], list) and payload["tabs"] and isinstance(payload["tabs"][0], dict):
-                    tabs = payload["tabs"]
-                    for t in payload["tabs"]:
-                        if "label" not in t:
-                            t["label"] = t.get("title") or "-"
-            
-            html = ""
-            for t in tabs or []:
-                html += f"<div class='tab'><h3>{t['label']}</h3><div>{t['content']}</div></div>"
-
-            return {
-                "chat_reply": message,
-                "artifact_html": html,
-                "skill_name": skill_name,
-                "skill_id": skill_id
-            }
-            
-        except Exception as e:
-            return {
-                "chat_reply": f"An error occurred: {str(e)}",
-                "artifact_html": f"<div class='alert alert-danger'>Error in {skill_name}: {str(e)}</div>",
-                "skill_name": skill_name,
-                "skill_id": skill_id
-            }
-    
-    return chat_skill_tool_function
 
 
 def initialize_skill_tools():
@@ -186,27 +182,29 @@ def initialize_skill_tools():
         return
     
     # Convert skill IDs to list - handle potential Field objects
-    skill_ids_raw = copilot_info.copilot_skill_ids
     skill_ids = []
-    
-    if skill_ids_raw:
-        # Try different ways to extract the actual list value
-        if hasattr(skill_ids_raw, '__iter__') and not isinstance(skill_ids_raw, str):
-            try:
-                skill_ids = list(skill_ids_raw)
-            except:
-                skill_ids = []
-        elif hasattr(skill_ids_raw, 'default'):
-            skill_ids = skill_ids_raw.default or []
-        elif hasattr(skill_ids_raw, 'value'):
-            skill_ids = skill_ids_raw.value or []
+    try:
+        # Try to access the skill IDs in different ways
+        if copilot_info.copilot_skill_ids:
+            # Try direct conversion first
+            skill_ids = copilot_info.copilot_skill_ids
+            if not isinstance(skill_ids, list):
+                # If it's not a list, try to convert it
+                skill_ids = [skill_ids] if skill_ids else []
+    except Exception as e:
+        print(f"Warning: Could not extract skill IDs: {e}")
+        skill_ids = []
     
     print(f"Initializing tools for {len(skill_ids)} skills...")
     
     for skill_id in skill_ids:
         try:
-            # Get detailed skill information
-            skill_info = ar_client.config.get_copilot_skill(True, COPILOT_ID, skill_id)
+            # Get detailed skill information with full node data
+            skill_info = ar_client.config.get_copilot_skill(
+                copilot_id=COPILOT_ID,
+                copilot_skill_id=str(skill_id),
+                use_published_version=True
+            )
             if not skill_info:
                 print(f"Warning: Could not get info for skill {skill_id}")
                 continue
@@ -222,25 +220,25 @@ def initialize_skill_tools():
             if not safe_tool_name:
                 safe_tool_name = f"skill_{skill_id}"
             
-            # Create both execution and chat tools for each skill
+            # Create skill execution tool with dynamic parameters and annotations
+            skill_tool, annotations, tool_parameters = create_skill_tool_with_annotations(skill_info)
             
-            # 1. Skill execution tool (for running with parameters)
-            skill_tool = create_skill_tool(skill_info)
+            # Add the tool with annotations
             mcp.add_tool(
                 skill_tool,
-                name=f"run_{safe_tool_name}",
-                description=f"Execute the {skill_name} skill with optional parameters. {skill_description[:200]}..."
+                name=safe_tool_name,
+                description=f"Execute the {skill_name} skill. {skill_description[:200]}...",
+                annotations=annotations
             )
             
-            # 2. Chat-based skill tool (for asking questions)
-            chat_tool = create_chat_skill_tool(skill_info)
-            mcp.add_tool(
-                chat_tool,
-                name=f"ask_{safe_tool_name}",
-                description=f"Ask a question to the {skill_name} skill and get insights with visualizations. {skill_description[:200]}..."
-            )
+            # Log parameter info
+            param_count = len(tool_parameters) if tool_parameters else 0
+            param_info = f" with {param_count} parameters" if param_count > 0 else ""
+            print(f"✅ Created tool for skill: {skill_name} ({safe_tool_name}){param_info}")
             
-            print(f"✅ Created tools for skill: {skill_name} (run_{safe_tool_name}, ask_{safe_tool_name})")
+            if param_count > 0:
+                for param_name, param_config in tool_parameters.items():
+                    print(f"   - {param_name}: {param_config['type']} ({'required' if param_config['required'] else 'optional'})")
             
         except Exception as e:
             print(f"❌ Error creating tool for skill {skill_id}: {e}")

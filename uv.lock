@@ -19,7 +19,7 @@ wheels = [
 [[package]]
 name = "answerrocket-client"
 version = "0.2.57"
-source = { git = "ssh://git@github.com/answerrocket/answerrocket-python-client.git?rev=get-copilots-for-mcp#ea57266108fa2f59c2f3cd67226ede479923a466" }
+source = { git = "ssh://git@github.com/answerrocket/answerrocket-python-client.git?rev=get-copilots-for-mcp#2ac3c51d8d37d5d9f7b764192a44f99d93621056" }
 dependencies = [
     { name = "pandas" },
     { name = "sgqlc" },
