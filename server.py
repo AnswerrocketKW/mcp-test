@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from answer_rocket import AnswerRocketClient
 import os
 import asyncio
+import inspect
 
 # Get environment variables
 AR_URL = os.getenv("AR_URL", "")
@@ -45,206 +46,247 @@ COPILOT_NAME = str(copilot_info.name) if copilot_info and copilot_info.name else
 mcp = FastMCP(COPILOT_NAME)
 
 
-def extract_skill_parameters(skill_info):
-    """Extract parameters directly from skill object."""
+def extract_skill_parameters(skill_info) -> Dict[str, Dict[str, Any]]:
+    """Extract parameters from skill info using the GraphQL schema fields."""
     parameters = {}
     
-    try:
-        # Get parameters directly from the skill object
-        if hasattr(skill_info, 'parameters') and skill_info.parameters:
-            # Handle potential Field objects or direct values
-            skill_params = skill_info.parameters
-            if hasattr(skill_params, '__iter__') and not isinstance(skill_params, str):
-                # If it's iterable (list/dict), use it directly
-                if isinstance(skill_params, dict):
-                    parameters = skill_params
-                elif isinstance(skill_params, list):
-                     # Convert list of parameter objects to dict
-                     for param in skill_params:
-                         if hasattr(param, 'name'):
-                             param_name = str(param.name)
-                             # Check if it's multi-value (list of strings) or single string
-                             is_multi = bool(getattr(param, 'is_multi', False))
-                             param_type = "array" if is_multi else "string"
-                             
-                             param_config = {
-                                 'type': param_type,
-                                 'description': str(getattr(param, 'description', '')),
-                                 'required': bool(getattr(param, 'required', False))
-                             }
-                             parameters[param_name] = param_config
-                        
-    except Exception as e:
-        print(f"Warning: Error extracting parameters from skill: {e}")
+    if not hasattr(skill_info, 'parameters') or not skill_info.parameters:
+        return parameters
+    
+    for param in skill_info.parameters:
+        param_name = str(param.name)
+        
+        # Determine parameter type based on isMulti field
+        param_type = "array" if getattr(param, 'isMulti', False) else "string"
+        
+        # Get description from llmDescription or description field
+        description = str(getattr(param, 'llmDescription', '') or 
+                         getattr(param, 'description', '') or 
+                         f"Parameter {param_name}")
+        
+        # Check if parameter has constrained values
+        constrained_values = getattr(param, 'constrainedValues', None)
+        if constrained_values:
+            description += f" (Allowed values: {', '.join(map(str, constrained_values))})"
+        
+        # Determine if required based on whether it has a value or inheritedValue
+        has_default = bool(getattr(param, 'value', None) or getattr(param, 'inheritedValue', None))
+        required = not has_default  # If no default value, it's required
+        
+        parameters[param_name] = {
+            'type': param_type,
+            'description': description,
+            'required': required,
+            'is_multi': getattr(param, 'isMulti', False),
+            'constrained_values': constrained_values,
+            'key': getattr(param, 'key', param_name)  # Use key field if available
+        }
     
     return parameters
 
 
 def create_skill_tool_with_annotations(skill_info):
-    """Create a tool function and annotations for a specific skill."""
+    """Create a tool function with proper annotations for a specific skill."""
     skill_id = str(skill_info.copilot_skill_id)
     skill_name = str(skill_info.name)
     skill_description = str(skill_info.description or skill_info.detailed_description or f"Execute {skill_name} skill")
     
-    # Extract parameters from skill nodes
+    # Extract parameters from skill
     skill_parameters = extract_skill_parameters(skill_info)
     
-    # Create ToolAnnotations
-    tool_parameters = {}
+    # Create ToolAnnotations with appropriate hints based on skill metadata
+    annotations = ToolAnnotations(
+        title=skill_info.detailedName if hasattr(skill_info, 'detailedName') else skill_name,
+        # Most copilot skills are read-only queries
+        readOnlyHint=not getattr(skill_info, 'schedulingOnly', False),
+        # Skills are typically non-destructive
+        destructiveHint=False,
+        # Skills with same params should return same results
+        idempotentHint=True,
+        # Skills may interact with external data sources
+        openWorldHint=True
+    )
     
-    if skill_parameters:
-        for param_name, param_info in skill_parameters.items():
-            # Handle different parameter info formats
-            param_description = ""
-            param_type = "string"  # default
-            required = False
-            
-            if isinstance(param_info, dict):
-                param_description = param_info.get('description', '')
-                param_type = param_info.get('type', 'string')
-                required = param_info.get('required', False)
-            elif isinstance(param_info, str):
-                param_description = param_info
-            
-            # Only two types: string or array of strings
-            mcp_type = "array" if param_type == "array" else "string"
-            
-            tool_parameters[param_name] = {
-                "type": mcp_type,
-                "description": param_description,
-                "required": required
-            }
-    
-    # Create annotations
-    annotations = ToolAnnotations() if tool_parameters else None
-    if annotations and tool_parameters:
-        # Set parameters directly on the annotations object
-        for param_name, param_config in tool_parameters.items():
-            setattr(annotations, param_name, param_config)
-    
-    # Create the tool function
-    async def skill_tool_function(**kwargs) -> Dict[str, Any]:
-        """Execute this AnswerRocket skill with its specific parameters."""
-        try:
-            # Filter kwargs to only include expected parameters
-            if skill_parameters:
-                filtered_params = {k: v for k, v in kwargs.items() if k in skill_parameters}
-            else:
-                # If no specific parameters, treat all kwargs as parameters
-                filtered_params = kwargs
-            
-            # Create AnswerRocket client
-            ar_client = AnswerRocketClient(AR_URL, AR_TOKEN)
-            if not ar_client.can_connect():
-                raise ValueError("Cannot connect to AnswerRocket")
-            
-            # Run the skill
-            skill_result = ar_client.skill.run(COPILOT_ID, skill_name, filtered_params)
-            
-            if not skill_result.success:
+    # Build function signature dynamically based on parameters
+    def create_dynamic_function(skill_params):
+        async def skill_tool_function(**kwargs) -> Dict[str, Any]:
+            """Execute this AnswerRocket skill."""
+            try:
+                # Validate and transform parameters
+                processed_params = {}
+                for param_name, param_info in skill_params.items():
+                    if param_name in kwargs:
+                        value = kwargs[param_name]
+                        # Use the 'key' field if available, otherwise use name
+                        param_key = param_info.get('key', param_name)
+                        
+                        # Validate constrained values if present
+                        if param_info.get('constrained_values') and value not in param_info['constrained_values']:
+                            return {
+                                "success": False,
+                                "error": f"Invalid value for {param_name}. Allowed values: {param_info['constrained_values']}",
+                                "skill_name": skill_name,
+                                "skill_id": skill_id
+                            }
+                        
+                        processed_params[param_key] = value
+                    elif param_info.get('required', False):
+                        return {
+                            "success": False,
+                            "error": f"Required parameter '{param_name}' not provided",
+                            "skill_name": skill_name,
+                            "skill_id": skill_id
+                        }
+                
+                # Create AnswerRocket client
+                ar_client = AnswerRocketClient(AR_URL, AR_TOKEN)
+                if not ar_client.can_connect():
+                    raise ValueError("Cannot connect to AnswerRocket")
+                
+                # Run the skill with processed parameters
+                skill_result = ar_client.skill.run(COPILOT_ID, skill_name, processed_params)
+                
+                if not skill_result.success:
+                    return {
+                        "success": False,
+                        "error": skill_result.error,
+                        "code": skill_result.code,
+                        "skill_name": skill_name,
+                        "skill_id": skill_id,
+                        "parameters_used": processed_params
+                    }
+                
                 return {
-                    "success": False,
-                    "error": skill_result.error,
+                    "success": True,
+                    "data": skill_result.data,
                     "code": skill_result.code,
                     "skill_name": skill_name,
                     "skill_id": skill_id,
-                    "parameters_used": filtered_params
+                    "parameters_used": processed_params
                 }
-            
-            return {
-                "success": True,
-                "data": skill_result.data,
-                "code": skill_result.code,
-                "skill_name": skill_name,
-                "skill_id": skill_id,
-                "parameters_used": filtered_params
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Error running skill {skill_name}: {str(e)}",
-                "skill_name": skill_name,
-                "skill_id": skill_id,
-                "parameters_attempted": kwargs
-            }
+                
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Error running skill {skill_name}: {str(e)}",
+                    "skill_name": skill_name,
+                    "skill_id": skill_id,
+                    "parameters_attempted": kwargs
+                }
+        
+        # Set function metadata
+        skill_tool_function.__name__ = f"skill_{skill_name.lower().replace(' ', '_')}"
+        skill_tool_function.__doc__ = skill_description
+        
+        # Add parameter annotations for better MCP integration
+        sig_params = []
+        for param_name, param_info in skill_params.items():
+            param_type = List[str] if param_info['type'] == 'array' else str
+            default = inspect.Parameter.empty if param_info.get('required', False) else None
+            sig_params.append(
+                inspect.Parameter(
+                    param_name,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=default,
+                    annotation=param_type
+                )
+            )
+        
+        # Create proper function signature
+        skill_tool_function.__signature__ = inspect.Signature(sig_params)
+        
+        return skill_tool_function
     
-    return skill_tool_function, annotations, tool_parameters
+    # Create the function with captured parameters
+    tool_function = create_dynamic_function(skill_parameters)
+    
+    return tool_function, annotations, skill_parameters
 
 
 
 
 
-def initialize_skill_tools():
-    """Initialize tools for all skills in this copilot."""
+async def fetch_skill_info(skill_id: str):
+    """Fetch skill information asynchronously."""
+    try:
+        skill_info = ar_client.config.get_copilot_skill(
+            copilot_id=COPILOT_ID,
+            copilot_skill_id=str(skill_id),
+            use_published_version=True
+        )
+        return skill_info
+    except Exception as e:
+        print(f"❌ Error fetching skill {skill_id}: {e}")
+        return None
+
+
+async def register_skill_tool(skill_info):
+    """Register a single skill as a tool."""
+    if not skill_info:
+        return False
+    
+    try:
+        skill_name = str(skill_info.name)
+        skill_description = str(skill_info.description or skill_info.detailed_description or f"Execute {skill_name}")
+        
+        # Create a safe tool name (alphanumeric and underscores only)
+        safe_tool_name = "".join(c if c.isalnum() or c == '_' else '_' for c in skill_name.lower())
+        safe_tool_name = safe_tool_name.strip('_') or f"skill_{skill_info.copilot_skill_id}"
+        
+        # Create skill execution tool with dynamic parameters and annotations
+        skill_tool, annotations, tool_parameters = create_skill_tool_with_annotations(skill_info)
+        
+        # Add the tool with annotations
+        mcp.add_tool(
+            skill_tool,
+            name=safe_tool_name,
+            description=f"{skill_description[:200]}{'...' if len(skill_description) > 200 else ''}",
+            annotations=annotations
+        )
+        
+        # Log parameter info
+        param_count = len(tool_parameters) if tool_parameters else 0
+        param_info = f" with {param_count} parameters" if param_count > 0 else ""
+        print(f"✅ Created tool for skill: {skill_name} ({safe_tool_name}){param_info}")
+        
+        if param_count > 0:
+            for param_name, param_config in tool_parameters.items():
+                required_text = 'required' if param_config['required'] else 'optional'
+                constrained_text = f" [{', '.join(param_config['constrained_values'])}]" if param_config.get('constrained_values') else ""
+                print(f"   - {param_name}: {param_config['type']} ({required_text}){constrained_text}")
+        
+        return True
+    except Exception as e:
+        print(f"❌ Error registering tool for skill {skill_info.name if skill_info else 'unknown'}: {e}")
+        return False
+
+
+async def initialize_skill_tools_async():
+    """Initialize tools for all skills in this copilot using parallel processing."""
     if not copilot_info or not copilot_info.copilot_skill_ids:
         print(f"No skills found for copilot {COPILOT_NAME}")
         return
     
-    # Convert skill IDs to list - handle potential Field objects
-    skill_ids = []
-    try:
-        # Try to access the skill IDs in different ways
-        if copilot_info.copilot_skill_ids:
-            # Try direct conversion first
-            skill_ids = copilot_info.copilot_skill_ids
-            if not isinstance(skill_ids, list):
-                # If it's not a list, try to convert it
-                skill_ids = [skill_ids] if skill_ids else []
-    except Exception as e:
-        print(f"Warning: Could not extract skill IDs: {e}")
-        skill_ids = []
+    # Convert skill IDs to list
+    skill_ids = copilot_info.copilot_skill_ids
+    if not isinstance(skill_ids, list):
+        skill_ids = [skill_ids] if skill_ids else []
     
     print(f"Initializing tools for {len(skill_ids)} skills...")
     
-    for skill_id in skill_ids:
-        try:
-            # Get detailed skill information with full node data
-            skill_info = ar_client.config.get_copilot_skill(
-                copilot_id=COPILOT_ID,
-                copilot_skill_id=str(skill_id),
-                use_published_version=True
-            )
-            if not skill_info:
-                print(f"Warning: Could not get info for skill {skill_id}")
-                continue
-            
-            skill_name = str(skill_info.name)
-            skill_description = str(skill_info.description or skill_info.detailed_description or f"Execute {skill_name}")
-            
-            # Create a safe tool name (alphanumeric and underscores only)
-            safe_tool_name = "".join(c if c.isalnum() or c == '_' else '_' for c in skill_name.lower())
-            safe_tool_name = safe_tool_name.strip('_')
-            
-            # Ensure tool name is not empty
-            if not safe_tool_name:
-                safe_tool_name = f"skill_{skill_id}"
-            
-            # Create skill execution tool with dynamic parameters and annotations
-            skill_tool, annotations, tool_parameters = create_skill_tool_with_annotations(skill_info)
-            
-            # Add the tool with annotations
-            mcp.add_tool(
-                skill_tool,
-                name=safe_tool_name,
-                description=f"Execute the {skill_name} skill. {skill_description[:200]}...",
-                annotations=annotations
-            )
-            
-            # Log parameter info
-            param_count = len(tool_parameters) if tool_parameters else 0
-            param_info = f" with {param_count} parameters" if param_count > 0 else ""
-            print(f"✅ Created tool for skill: {skill_name} ({safe_tool_name}){param_info}")
-            
-            if param_count > 0:
-                for param_name, param_config in tool_parameters.items():
-                    print(f"   - {param_name}: {param_config['type']} ({'required' if param_config['required'] else 'optional'})")
-            
-        except Exception as e:
-            print(f"❌ Error creating tool for skill {skill_id}: {e}")
-            continue
+    # Fetch all skill info in parallel
+    skill_infos = await asyncio.gather(*[fetch_skill_info(str(skill_id)) for skill_id in skill_ids])
     
-    print(f"🚀 Initialized MCP server '{COPILOT_NAME}' with dynamic skill tools")
+    # Register all skills in parallel
+    results = await asyncio.gather(*[register_skill_tool(skill_info) for skill_info in skill_infos])
+    
+    success_count = sum(1 for result in results if result)
+    print(f"🚀 Successfully initialized {success_count}/{len(skill_ids)} skill tools for '{COPILOT_NAME}'")
+
+
+def initialize_skill_tools():
+    """Wrapper to run async initialization."""
+    asyncio.run(initialize_skill_tools_async())
 
 
 # Initialize all skill tools
