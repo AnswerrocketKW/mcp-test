@@ -237,74 +237,13 @@ setup_python_env() {
 get_copilot_metadata() {
     print_step "Getting copilot metadata..."
     
-    # Create a temporary script to get copilots
-    cat > get_copilots_temp.py << 'EOF'
-import sys
-import json
-from answer_rocket import AnswerRocketClient
-
-def main():
-    if len(sys.argv) != 3:
-        print("Usage: python get_copilots_temp.py <AR_URL> <AR_TOKEN>", file=sys.stderr)
-        sys.exit(1)
-    
-    ar_url = sys.argv[1]
-    ar_token = sys.argv[2]
-    
-    try:
-        ar_client = AnswerRocketClient(ar_url, ar_token)
-        
-        if not ar_client.can_connect():
-            print("Error: Cannot connect to AnswerRocket", file=sys.stderr)
-            sys.exit(1)
-        
-        # Try to get copilots - use different methods that might be available
-        copilots = []
-        try:
-            # Method 1: Try get_copilots with published version
-            copilots = ar_client.config.get_copilots(True)
-        except AttributeError:
-            try:
-                # Method 2: Try get_copilots without parameter
-                copilots = ar_client.config.get_copilots()
-            except AttributeError:
-                print("Error: Could not find get_copilots method", file=sys.stderr)
-                sys.exit(1)
-        
-        if not copilots:
-            print("Error: No copilots found", file=sys.stderr)
-            sys.exit(1)
-        
-        copilot_list = []
-        for copilot in copilots:
-            copilot_data = {
-                "copilot_id": str(copilot.copilot_id),
-                "name": str(copilot.name or copilot.copilot_id),
-                "description": str(copilot.description or "")
-            }
-            copilot_list.append(copilot_data)
-        
-        print(json.dumps(copilot_list, indent=2))
-        
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
-EOF
-    
-    # Run the script to get copilot metadata
-    COPILOT_JSON=$(uv run python get_copilots_temp.py "$AR_URL" "$AR_TOKEN")
+    # Use the existing get_copilots.py script
+    COPILOT_JSON=$(uv run python get_copilots.py "$AR_URL" "$AR_TOKEN")
     
     if [[ $? -ne 0 ]]; then
         print_error "Failed to get copilot metadata"
-        rm -f get_copilots_temp.py
         exit 1
     fi
-    
-    # Clean up temp script
-    rm -f get_copilots_temp.py
     
     # Parse the JSON to get copilot IDs and names
     COPILOT_DATA=$(echo "$COPILOT_JSON" | uv run python -c "
