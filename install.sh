@@ -291,24 +291,25 @@ select_copilots() {
     # Try the new robust selector first
     if [[ -f "select_copilots_interactive.py" ]]; then
         chmod +x select_copilots_interactive.py
-        print_info "Launching interactive copilot selector..."
         
         # For curses-based selector, we need direct terminal access
-        # Create a temp file for the JSON output
-        TEMP_OUTPUT=$(mktemp)
+        print_info "Launching interactive copilot selector..."
         
         # Run the selector with full terminal access
-        # The selector will write JSON to stdout only after the UI closes
-        if uv run python select_copilots_interactive.py "$TEMP_JSON" > "$TEMP_OUTPUT" 2>/dev/tty; then
-            SELECTED_COPILOTS=$(cat "$TEMP_OUTPUT")
-            SELECTION_STATUS=0
+        # Curses needs terminal access, capture only the final JSON output
+        # Note: macOS 'script' command syntax differs from Linux
+        if [[ "$OS" == "macos" ]]; then
+            # macOS version
+            SELECTED_COPILOTS=$(script -q /dev/null uv run python select_copilots_interactive.py "$TEMP_JSON" | grep -E '^\[.*\]$' | tail -n 1)
         else
-            SELECTION_STATUS=$?
+            # Linux version  
+            SELECTED_COPILOTS=$(script -qc "uv run python select_copilots_interactive.py '$TEMP_JSON'" /dev/null | grep -E '^\[.*\]$' | tail -n 1)
+        fi
+        SELECTION_STATUS=$?
+        
+        if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
             print_warning "Interactive selector encountered an issue"
         fi
-        
-        # Clean up
-        rm -f "$TEMP_OUTPUT"
     else
         # Try legacy selector
         if [[ -f "select_copilots.py" ]]; then
