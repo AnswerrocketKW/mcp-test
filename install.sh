@@ -201,11 +201,22 @@ setup_project() {
     
     # Copy selector scripts if they exist in the current directory
     SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    SCRIPTS_COPIED=0
+    
+    if [[ -f "$SCRIPT_DIR/select_copilots_interactive.py" ]]; then
+        cp "$SCRIPT_DIR/select_copilots_interactive.py" "$PROJECT_DIR/"
+        SCRIPTS_COPIED=1
+    fi
     if [[ -f "$SCRIPT_DIR/select_copilots.py" ]]; then
         cp "$SCRIPT_DIR/select_copilots.py" "$PROJECT_DIR/"
+        SCRIPTS_COPIED=1
     fi
     if [[ -f "$SCRIPT_DIR/select_copilots_simple.py" ]]; then
         cp "$SCRIPT_DIR/select_copilots_simple.py" "$PROJECT_DIR/"
+        SCRIPTS_COPIED=1
+    fi
+    
+    if [[ $SCRIPTS_COPIED -eq 1 ]]; then
         print_info "Copied copilot selector scripts"
     fi
     
@@ -270,34 +281,58 @@ select_copilots() {
     TEMP_JSON=$(mktemp)
     echo "$COPILOT_JSON" > "$TEMP_JSON"
     
-    # Try TUI selector first, fall back to simple selector if it fails
-    if [[ -f "select_copilots.py" ]]; then
-        chmod +x select_copilots.py
-        print_info "Launching interactive copilot selector..."
-        SELECTED_COPILOTS=$(uv run python select_copilots.py "$TEMP_JSON" 2>/tmp/select_error.log)
-        
-        if [[ $? -ne 0 ]]; then
-            print_warning "Interactive selector failed, using simple selector..."
-            if [[ -f "select_copilots_simple.py" ]]; then
-                chmod +x select_copilots_simple.py
-                SELECTED_COPILOTS=$(uv run python select_copilots_simple.py "$TEMP_JSON")
-            else
-                print_error "No selector script found"
-                rm -f "$TEMP_JSON"
-                exit 1
-            fi
-        fi
-    elif [[ -f "select_copilots_simple.py" ]]; then
-        chmod +x select_copilots_simple.py
-        SELECTED_COPILOTS=$(uv run python select_copilots_simple.py "$TEMP_JSON")
+    # Debug: Check if we have a TTY
+    if [[ -t 0 ]] && [[ -t 1 ]]; then
+        print_info "Interactive terminal detected"
     else
-        print_error "No copilot selector script found"
-        rm -f "$TEMP_JSON"
-        exit 1
+        print_warning "Non-interactive environment detected"
     fi
     
-    # Check if selection was successful before cleaning up
-    SELECTION_STATUS=$?
+    # Try the new robust selector first
+    if [[ -f "select_copilots_interactive.py" ]]; then
+        chmod +x select_copilots_interactive.py
+        print_info "Launching interactive copilot selector..."
+        
+        # Run with explicit terminal allocation
+        SELECTED_COPILOTS=$(uv run python select_copilots_interactive.py "$TEMP_JSON" </dev/tty 2>/tmp/select_error.log)
+        SELECTION_STATUS=$?
+        
+        if [[ $SELECTION_STATUS -ne 0 ]]; then
+            print_warning "Interactive selector encountered an issue"
+            # Show error details if available
+            if [[ -f /tmp/select_error.log ]] && [[ -s /tmp/select_error.log ]]; then
+                print_info "Error details: $(cat /tmp/select_error.log | head -1)"
+            fi
+        fi
+    else
+        # Try legacy selector
+        if [[ -f "select_copilots.py" ]]; then
+            chmod +x select_copilots.py
+            print_info "Launching legacy interactive copilot selector..."
+            
+            # Force terminal allocation for the Python script
+            SELECTED_COPILOTS=$(script -q /dev/null uv run python select_copilots.py "$TEMP_JSON" 2>/tmp/select_error.log | grep -v "Script")
+            SELECTION_STATUS=$?
+            
+            if [[ $SELECTION_STATUS -ne 0 ]]; then
+                print_warning "Legacy selector failed, trying simple selector..."
+            fi
+        fi
+    fi
+    
+    # Fallback to simple selector if interactive failed
+    if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
+        if [[ -f "select_copilots_simple.py" ]]; then
+            chmod +x select_copilots_simple.py
+            print_info "Using simple selection mode..."
+            SELECTED_COPILOTS=$(uv run python select_copilots_simple.py "$TEMP_JSON")
+            SELECTION_STATUS=$?
+        else
+            print_error "No fallback selector found"
+            rm -f "$TEMP_JSON"
+            exit 1
+        fi
+    fi
     
     # Clean up temp file
     rm -f "$TEMP_JSON"
