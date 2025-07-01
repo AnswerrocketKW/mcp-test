@@ -1,0 +1,122 @@
+[
+  {
+    "copilot_id": "web-dev-001",
+    "name": "Web Development Assistant",
+    "description": "Helps with HTML, CSS, JavaScript, and modern web frameworks",
+    "skills": [
+      {"name": "HTML"},
+      {"name": "CSS"},
+      {"name": "JavaScript"},
+      {"name": "React"},
+      {"name": "Vue.js"}
+    ]
+  },
+  {
+    "copilot_id": "data-analyst-002",
+    "name": "Data Analytics Helper",
+    "description": "Expert in data analysis, visualization, and statistical modeling",
+    "skills": [
+      {"name": "SQL"},
+      {"name": "Python"},
+      {"name": "Pandas"},
+      {"name": "Matplotlib"},
+      {"name": "Statistics"}
+    ]
+  },
+  {
+    "copilot_id": "api-dev-003",
+    "name": "API Development Guide",
+    "description": "Specializes in REST APIs, GraphQL, and microservices architecture",
+    "skills": [
+      {"name": "REST API"},
+      {"name": "GraphQL"},
+      {"name": "Node.js"},
+      {"name": "Express"},
+      {"name": "Microservices"}
+    ]
+  },
+  {
+    "copilot_id": "mobile-dev-004",
+    "name": "Mobile App Developer",
+    "description": "Creates native and cross-platform mobile applications",
+    "skills": [
+      {"name": "React Native"},
+      {"name": "Flutter"},
+      {"name": "iOS"},
+      {"name": "Android"},
+      {"name": "Kotlin"}
+    ]
+  },
+  {
+    "copilot_id": "devops-005",
+    "name": "DevOps Engineer",
+    "description": "Automates deployment, manages infrastructure, and ensures reliability",
+    "skills": [
+      {"name": "Docker"},
+      {"name": "Kubernetes"},
+      {"name": "AWS"},
+      {"name": "CI/CD"},
+      {"name": "Terraform"}
+    ]
+  },
+  {
+    "copilot_id": "ml-engineer-006",
+    "name": "Machine Learning Specialist",
+    "description": "Builds and deploys machine learning models and AI solutions",
+    "skills": [
+      {"name": "TensorFlow"},
+      {"name": "PyTorch"},
+      {"name": "Scikit-learn"},
+      {"name": "Deep Learning"},
+      {"name": "NLP"}
+    ]
+  },
+  {
+    "copilot_id": "security-007",
+    "name": "Security Analyst",
+    "description": "Identifies vulnerabilities and implements security best practices",
+    "skills": [
+      {"name": "Penetration Testing"},
+      {"name": "OWASP"},
+      {"name": "Cryptography"},
+      {"name": "Security Auditing"},
+      {"name": "Incident Response"}
+    ]
+  },
+  {
+    "copilot_id": "ui-ux-008",
+    "name": "UI/UX Designer",
+    "description": "Creates beautiful and intuitive user interfaces and experiences",
+    "skills": [
+      {"name": "Figma"},
+      {"name": "Adobe XD"},
+      {"name": "User Research"},
+      {"name": "Prototyping"},
+      {"name": "Design Systems"}
+    ]
+  },
+  {
+    "copilot_id": "blockchain-009",
+    "name": "Blockchain Developer",
+    "description": "Develops smart contracts and decentralized applications",
+    "skills": [
+      {"name": "Solidity"},
+      {"name": "Ethereum"},
+      {"name": "Web3.js"},
+      {"name": "Smart Contracts"},
+      {"name": "DeFi"}
+    ]
+  },
+  {
+    "copilot_id": "game-dev-010",
+    "name": "Game Developer",
+    "description": "Creates engaging games for various platforms and devices",
+    "skills": [
+      {"name": "Unity"},
+      {"name": "Unreal Engine"},
+      {"name": "C#"},
+      {"name": "Game Design"},
+      {"name": "3D Modeling"}
+    ]
+  }
+] 

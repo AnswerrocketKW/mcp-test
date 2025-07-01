@@ -1,329 +1,262 @@
 #!/usr/bin/env python3
 """
-Robust interactive TUI for selecting copilots to install.
-Handles terminal access issues and provides better error recovery.
+Interactive TUI for selecting copilots with dropdown-style search using curses.
 """
 
 import sys
 import json
-import os
-import select
-import termios
-import tty
-import subprocess
-from typing import List, Dict, Tuple, Optional
-from collections import defaultdict
+import curses
+from typing import List, Dict, Set, Optional
+from dataclasses import dataclass, field
 
 
-class RobustCopilotSelector:
+@dataclass
+class DropdownState:
+    query: str = ""
+    filtered_indices: List[int] = field(default_factory=list)
+    selected_indices: Set[int] = field(default_factory=set)
+    current_index: int = 0
+    view_offset: int = 0
+    confirm_dialog: bool = False
+    confirm_save: bool = True
+
+
+class CursesCopilotSelector:
     def __init__(self, copilots: List[Dict]):
         self.copilots = copilots
-        self.selected = set()  # Set of selected indices
-        self.current_index = 0
-        self.search_term = ""
-        self.filtered_indices = list(range(len(copilots)))
-        self.view_offset = 0  # For scrolling
-        self.terminal_height = 24
-        self.terminal_width = 80
+        self.state = DropdownState(filtered_indices=list(range(len(copilots))))
         
-        # Pre-compute searchable text for performance
+        # Pre-compute searchable text
         self.searchable_texts = []
         for copilot in copilots:
             searchable = " ".join([
                 copilot.get('name', '').lower(),
                 copilot.get('description', '').lower(),
-                copilot.get('copilot_id', '').lower(),
                 " ".join(skill.get('name', '').lower() for skill in copilot.get('skills', []))
             ])
             self.searchable_texts.append(searchable)
-        
-        # Group copilots by name for duplicate detection
-        self.name_groups = defaultdict(list)
-        for idx, copilot in enumerate(copilots):
-            self.name_groups[copilot.get('name', 'Unknown')].append(idx)
-    
-    def get_terminal_size(self) -> Tuple[int, int]:
-        """Get terminal dimensions with fallback."""
-        try:
-            import shutil
-            cols, rows = shutil.get_terminal_size()
-            self.terminal_height = rows
-            self.terminal_width = cols
-            return rows, cols
-        except:
-            return self.terminal_height, self.terminal_width
-    
-    def clear_screen(self):
-        """Clear the terminal screen."""
-        print("\033[2J\033[H", end='', flush=True, file=sys.stderr)
-    
-    def get_display_info(self, copilot: Dict, copilot_idx: int) -> str:
-        """Get formatted display information for a copilot."""
-        name = copilot.get('name', 'Unknown')
-        description = copilot.get('description', 'No description')
-        skill_count = len(copilot.get('skills', []))
-        copilot_id = copilot.get('copilot_id', 'Unknown ID')
-        
-        # Check if this copilot has duplicates
-        duplicate_indicator = ""
-        if len(self.name_groups[name]) > 1:
-            duplicate_indicator = " ⚠️"
-        
-        # Truncate description if too long
-        max_desc_len = 35
-        if len(description) > max_desc_len:
-            description = description[:max_desc_len-3] + "..."
-        
-        # Format with clear separation
-        skill_text = f"{skill_count} skill{'s' if skill_count != 1 else ''}"
-        id_short = copilot_id.split('-')[0] if '-' in copilot_id else copilot_id[:8]
-        
-        return f"{name}{duplicate_indicator} • {skill_text} • {description} • ID: {id_short}"
     
     def filter_copilots(self):
-        """Filter copilots based on search term."""
-        if not self.search_term:
-            self.filtered_indices = list(range(len(self.copilots)))
+        """Filter copilots based on search query."""
+        if not self.state.query:
+            self.state.filtered_indices = list(range(len(self.copilots)))
         else:
-            search_lower = self.search_term.lower()
-            self.filtered_indices = []
-            
-            # Support multiple search terms (space-separated)
-            search_terms = search_lower.split()
+            search_terms = self.state.query.lower().split()
+            self.state.filtered_indices = []
             
             for idx, searchable_text in enumerate(self.searchable_texts):
                 if all(term in searchable_text for term in search_terms):
-                    self.filtered_indices.append(idx)
+                    self.state.filtered_indices.append(idx)
         
-        # Reset current index if out of bounds
-        if self.current_index >= len(self.filtered_indices):
-            self.current_index = max(0, len(self.filtered_indices) - 1)
+        # Adjust current index
+        if self.state.filtered_indices:
+            if self.state.current_index >= len(self.state.filtered_indices):
+                self.state.current_index = len(self.state.filtered_indices) - 1
+        else:
+            self.state.current_index = 0
         
-        # Reset view offset when filtering changes
-        self.view_offset = 0
+        self.state.view_offset = 0
     
-    def display(self):
-        """Display the current state of the selector."""
-        self.clear_screen()
-        rows, cols = self.get_terminal_size()
+    def draw_main(self, stdscr):
+        """Draw the main interface."""
+        height, width = stdscr.getmaxyx()
+        stdscr.clear()
         
         # Header
-        print("🚀 Select Copilots to Install", file=sys.stderr)
-        print("=" * min(cols, 80), file=sys.stderr)
+        stdscr.addstr(0, 0, "🔍 Select Copilots to Install", curses.A_BOLD)
+        stdscr.addstr(1, 0, "─" * min(width - 1, 80))
         
-        # Search display
-        if self.search_term:
-            print(f"🔍 Search: {self.search_term}", file=sys.stderr)
+        # Search box
+        stdscr.addstr(3, 0, "Search: ")
+        stdscr.addstr(3, 8, self.state.query)
+        stdscr.addstr(3, 8 + len(self.state.query), "█")
         
-        # Status line
-        total_selected = len(self.selected)
-        filtered_selected = len([i for i in self.selected if i in self.filtered_indices])
-        print(f"Showing: {len(self.filtered_indices)}/{len(self.copilots)} | Selected: {filtered_selected} shown, {total_selected} total", file=sys.stderr)
-        print(file=sys.stderr)
+        # Results area calculation
+        header_lines = 6
+        footer_lines = 4
+        available_lines = height - header_lines - footer_lines
         
-        # Controls
-        print("Navigate: j/k or ↑/↓ | Select: SPACE | Search: / | Clear search: ESC", file=sys.stderr)
-        print("Select all: a | Deselect all: d | Confirm: ENTER | Cancel: q", file=sys.stderr)
-        print("-" * min(cols, 80), file=sys.stderr)
-        
-        # Calculate display window
-        header_lines = 8
-        footer_lines = 2
-        available_lines = rows - header_lines - footer_lines
-        
-        # Adjust view offset
-        if self.current_index < self.view_offset:
-            self.view_offset = self.current_index
-        elif self.current_index >= self.view_offset + available_lines:
-            self.view_offset = self.current_index - available_lines + 1
-        
-        # Display copilots
-        if not self.filtered_indices:
-            print("\n  No copilots match your search criteria.", file=sys.stderr)
-        else:
-            for display_idx in range(available_lines):
-                actual_idx = self.view_offset + display_idx
-                if actual_idx >= len(self.filtered_indices):
+        # Results
+        if self.state.filtered_indices:
+            stdscr.addstr(5, 0, f"Found {len(self.state.filtered_indices)} copilots:")
+            
+            # Adjust view offset
+            if self.state.current_index < self.state.view_offset:
+                self.state.view_offset = self.state.current_index
+            elif self.state.current_index >= self.state.view_offset + available_lines:
+                self.state.view_offset = self.state.current_index - available_lines + 1
+            
+            # Display results
+            for i in range(min(available_lines, len(self.state.filtered_indices))):
+                idx = self.state.view_offset + i
+                if idx >= len(self.state.filtered_indices):
                     break
                 
-                copilot_idx = self.filtered_indices[actual_idx]
+                copilot_idx = self.state.filtered_indices[idx]
                 copilot = self.copilots[copilot_idx]
                 
-                # Selection indicator
-                cursor = ">" if actual_idx == self.current_index else " "
-                checkbox = "[x]" if copilot_idx in self.selected else "[ ]"
+                # Format
+                name = copilot.get('name', 'Unknown')
+                skill_count = len(copilot.get('skills', []))
+                skill_text = f"{skill_count} skill{'s' if skill_count != 1 else ''}"
                 
-                # Display line
-                info = self.get_display_info(copilot, copilot_idx)
-                max_len = cols - 8
-                if len(info) > max_len:
-                    info = info[:max_len-3] + "..."
+                # Selection indicators
+                is_selected = copilot_idx in self.state.selected_indices
+                is_current = idx == self.state.current_index
                 
-                print(f"{cursor} {checkbox} {info}", file=sys.stderr)
+                prefix = "▶ " if is_current else "  "
+                checkbox = "[✓]" if is_selected else "[ ]"
+                
+                line = f"{prefix}{checkbox} {name} • {skill_text}"
+                if len(line) > width - 2:
+                    line = line[:width-5] + "..."
+                
+                y = header_lines + i
+                if is_current:
+                    stdscr.addstr(y, 0, line, curses.A_REVERSE)
+                else:
+                    stdscr.addstr(y, 0, line)
+            
+            # Scroll indicator
+            if self.state.view_offset + available_lines < len(self.state.filtered_indices):
+                remaining = len(self.state.filtered_indices) - self.state.view_offset - available_lines
+                stdscr.addstr(height - footer_lines - 1, 2, f"↓ {remaining} more results")
+        else:
+            stdscr.addstr(5, 0, "No copilots match your search.")
         
         # Footer
-        if self.view_offset + available_lines < len(self.filtered_indices):
-            print(f"\n↓ {len(self.filtered_indices) - self.view_offset - available_lines} more below", file=sys.stderr)
+        footer_y = height - 3
+        stdscr.addstr(footer_y, 0, "─" * min(width - 1, 80))
+        selected_count = len(self.state.selected_indices)
+        stdscr.addstr(footer_y + 1, 0, f"{selected_count} copilot{'s' if selected_count != 1 else ''} selected")
+        stdscr.addstr(footer_y + 2, 0, "↑↓: navigate • Enter: toggle • Type: search • Esc: finish")
     
-    def get_char(self, timeout=None):
-        """Get a single character with optional timeout."""
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(sys.stdin.fileno())
-            if timeout:
-                rlist, _, _ = select.select([sys.stdin], [], [], timeout)
-                if rlist:
-                    char = sys.stdin.read(1)
-                else:
-                    char = None
+    def draw_confirm(self, stdscr):
+        """Draw confirmation dialog."""
+        height, width = stdscr.getmaxyx()
+        stdscr.clear()
+        
+        # Center the dialog
+        center_y = height // 2 - 3
+        
+        selected_count = len(self.state.selected_indices)
+        if selected_count > 0:
+            stdscr.addstr(center_y, 5, f"{selected_count} copilot{'s' if selected_count != 1 else ''} selected")
+            stdscr.addstr(center_y + 1, 5, "Save selections?")
+            
+            save_option = "[Save & Exit]"
+            discard_option = "[Discard & Exit]"
+            
+            if self.state.confirm_save:
+                stdscr.addstr(center_y + 3, 5, "▶ " + save_option, curses.A_REVERSE)
+                stdscr.addstr(center_y + 4, 5, "  " + discard_option)
             else:
-                char = sys.stdin.read(1)
-            return char
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                stdscr.addstr(center_y + 3, 5, "  " + save_option)
+                stdscr.addstr(center_y + 4, 5, "▶ " + discard_option, curses.A_REVERSE)
+            
+            stdscr.addstr(center_y + 6, 5, "↑↓: choose • Enter: confirm • Esc: cancel")
+        else:
+            stdscr.addstr(center_y, 5, "No copilots selected")
+            stdscr.addstr(center_y + 1, 5, "Exit without selecting?")
+            stdscr.addstr(center_y + 3, 5, "Press Enter to exit or Esc to continue")
     
-    def handle_search_input(self):
-        """Handle search mode input."""
-        self.display()
-        print(f"\n🔍 Search: {self.search_term}_", end='', flush=True, file=sys.stderr)
+    def run_curses(self, stdscr) -> List[Dict]:
+        """Main curses loop."""
+        # Setup
+        curses.curs_set(0)  # Hide cursor
+        stdscr.keypad(True)  # Enable special keys
+        stdscr.timeout(50)  # Non-blocking input with 50ms timeout
         
         while True:
-            char = self.get_char()
+            # Draw appropriate screen
+            if self.state.confirm_dialog:
+                self.draw_confirm(stdscr)
+            else:
+                self.draw_main(stdscr)
             
-            if char == '\x1b':  # ESC
-                self.search_term = ""
-                self.filter_copilots()
-                break
-            elif char in ['\r', '\n']:  # ENTER
-                break
-            elif char in ['\x7f', '\x08']:  # Backspace
-                if self.search_term:
-                    self.search_term = self.search_term[:-1]
+            stdscr.refresh()
+            
+            # Get input
+            try:
+                key = stdscr.getch()
+            except:
+                continue
+            
+            if key == -1:  # No input
+                continue
+            
+            # Handle input based on state
+            if self.state.confirm_dialog:
+                # Confirmation dialog input
+                if key == curses.KEY_UP or key == curses.KEY_DOWN:
+                    self.state.confirm_save = not self.state.confirm_save
+                elif key == ord('\n') or key == ord('\r'):  # Enter
+                    if len(self.state.selected_indices) > 0:
+                        if self.state.confirm_save:
+                            return [self.copilots[i] for i in sorted(self.state.selected_indices)]
+                        else:
+                            return []
+                    else:
+                        return []
+                elif key == 27:  # ESC
+                    self.state.confirm_dialog = False
+            else:
+                # Main interface input
+                if key == curses.KEY_UP:
+                    if self.state.current_index > 0:
+                        self.state.current_index -= 1
+                elif key == curses.KEY_DOWN:
+                    if self.state.current_index < len(self.state.filtered_indices) - 1:
+                        self.state.current_index += 1
+                elif key == ord('\n') or key == ord('\r'):  # Enter
+                    if self.state.filtered_indices:
+                        copilot_idx = self.state.filtered_indices[self.state.current_index]
+                        if copilot_idx in self.state.selected_indices:
+                            self.state.selected_indices.remove(copilot_idx)
+                        else:
+                            self.state.selected_indices.add(copilot_idx)
+                elif key == 27:  # ESC
+                    self.state.confirm_dialog = True
+                    self.state.confirm_save = True
+                elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
+                    if self.state.query:
+                        self.state.query = self.state.query[:-1]
+                        self.filter_copilots()
+                elif 32 <= key <= 126:  # Printable characters
+                    self.state.query += chr(key)
                     self.filter_copilots()
-                    self.display()
-                    print(f"\n🔍 Search: {self.search_term}_", end='', flush=True, file=sys.stderr)
-            elif char and ord(char) >= 32 and ord(char) <= 126:  # Printable
-                self.search_term += char
-                self.filter_copilots()
-                self.display()
-                print(f"\n🔍 Search: {self.search_term}_", end='', flush=True, file=sys.stderr)
+                elif key == 3:  # Ctrl+C
+                    return []
     
     def run(self) -> List[Dict]:
-        """Run the interactive selector."""
+        """Run the selector."""
         try:
-            # Save terminal state
-            fd = sys.stdin.fileno()
-            old_settings = termios.tcgetattr(fd)
-            
-            # If many copilots, start with search
-            if len(self.copilots) > 20:
-                print(f"\n📋 Found {len(self.copilots)} copilots.", file=sys.stderr)
-                print("Press '/' to search or any other key to browse all...", file=sys.stderr)
-                char = self.get_char(timeout=3)  # 3 second timeout
-                if char == '/':
-                    self.handle_search_input()
-            
-            while True:
-                self.display()
-                
-                # Get input
-                tty.setraw(sys.stdin.fileno())
-                char = sys.stdin.read(1)
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-                
-                # Handle arrow keys
-                if char == '\x1b':
-                    tty.setraw(sys.stdin.fileno())
-                    next_chars = sys.stdin.read(2)
-                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-                    
-                    if next_chars == '[A':  # Up arrow
-                        if self.current_index > 0:
-                            self.current_index -= 1
-                    elif next_chars == '[B':  # Down arrow
-                        if self.current_index < len(self.filtered_indices) - 1:
-                            self.current_index += 1
-                    else:  # ESC
-                        self.search_term = ""
-                        self.filter_copilots()
-                
-                # Handle other keys
-                elif char == 'k':  # Up
-                    if self.current_index > 0:
-                        self.current_index -= 1
-                elif char == 'j':  # Down
-                    if self.current_index < len(self.filtered_indices) - 1:
-                        self.current_index += 1
-                elif char == ' ':  # Space - toggle selection
-                    if self.filtered_indices:
-                        copilot_idx = self.filtered_indices[self.current_index]
-                        if copilot_idx in self.selected:
-                            self.selected.remove(copilot_idx)
-                        else:
-                            self.selected.add(copilot_idx)
-                elif char == '/':  # Search
-                    self.handle_search_input()
-                elif char == 'a':  # Select all visible
-                    for idx in self.filtered_indices:
-                        self.selected.add(idx)
-                elif char == 'd':  # Deselect all visible
-                    for idx in self.filtered_indices:
-                        self.selected.discard(idx)
-                elif char in ['\r', '\n']:  # Enter - confirm
-                    break
-                elif char in ['q', '\x03']:  # q or Ctrl+C - cancel
-                    return []
-            
-            # Return selected copilots
-            return [self.copilots[i] for i in sorted(self.selected)]
-            
-        except KeyboardInterrupt:
-            # User pressed Ctrl+C, exit gracefully
-            print("\nSelection cancelled by user.", file=sys.stderr)
-            return []
+            return curses.wrapper(self.run_curses)
         except Exception as e:
-            # On error, provide a fallback selection mechanism
-            print(f"\nError in interactive mode: {e}", file=sys.stderr)
-            print("Falling back to simple selection...", file=sys.stderr)
+            print(f"\nError: {e}", file=sys.stderr)
             return self.fallback_selection()
-        finally:
-            # Restore terminal
-            try:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            except:
-                pass
     
     def fallback_selection(self) -> List[Dict]:
-        """Simple fallback selection when TUI fails."""
-        print("\n=== Copilot Selection (Simple Mode) ===", file=sys.stderr)
-        print("Available copilots:", file=sys.stderr)
-        
-        for idx, copilot in enumerate(self.copilots[:20]):  # Show first 20
+        """Simple fallback selection."""
+        print("\n=== Fallback Selection Mode ===", file=sys.stderr)
+        for idx, copilot in enumerate(self.copilots[:10]):
             name = copilot.get('name', 'Unknown')
             skills = len(copilot.get('skills', []))
             print(f"{idx + 1}. {name} ({skills} skills)", file=sys.stderr)
         
-        if len(self.copilots) > 20:
-            print(f"... and {len(self.copilots) - 20} more", file=sys.stderr)
-        
-        print("\nEnter copilot numbers to install (comma-separated), or 'all' for all:", file=sys.stderr)
-        selection = input().strip()
-        
-        if selection.lower() == 'all':
-            return self.copilots
-        
+        print("\nEnter numbers (comma-separated):", file=sys.stderr)
         try:
+            selection = input().strip()
+            if not selection:
+                return []
             indices = [int(x.strip()) - 1 for x in selection.split(',')]
             return [self.copilots[i] for i in indices if 0 <= i < len(self.copilots)]
         except:
-            print("Invalid selection. Selecting all copilots.", file=sys.stderr)
-            return self.copilots
+            return []
 
 
 def main():
     """Main entry point."""
-    print("Starting interactive copilot selector...", file=sys.stderr)
     # Read copilot data
     if len(sys.argv) > 1:
         with open(sys.argv[1], 'r') as f:
@@ -335,14 +268,13 @@ def main():
         print("Error: No copilots found", file=sys.stderr)
         sys.exit(1)
     
-    # Check if we can use interactive mode
+    # Check if interactive mode is available
     if not sys.stdin.isatty():
-        # Not a TTY, output all copilots
         print(json.dumps(copilot_data))
         return
     
     # Run selector
-    selector = RobustCopilotSelector(copilot_data)
+    selector = CursesCopilotSelector(copilot_data)
     selected = selector.run()
     
     if not selected:
