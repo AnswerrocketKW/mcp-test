@@ -293,43 +293,45 @@ select_copilots() {
         print_warning "Non-interactive environment detected"
     fi
     
-    # Try the new FIFO-based selector first
-    if [[ -f "select_copilots_interactive.py" ]]; then
-        chmod +x select_copilots_interactive.py
+    # Try wrapper script approach first (most reliable)
+    if [[ -f "copilot_selector_wrapper.sh" ]]; then
+        chmod +x copilot_selector_wrapper.sh
+        print_info "Launching interactive copilot selector..."
         
-        print_info "Launching interactive copilot selector with FIFO..."
-        
-        # Create FIFO for output
-        FIFO_PATH="/tmp/copilot_selector_fifo_$(whoami)_$(date +%H-%M-%S-%N)"
-        [ ! -p "$FIFO_PATH" ] && mkfifo "$FIFO_PATH"
-        
-        # Run the selector in background with FIFO output
-        uv run python select_copilots_interactive.py "$FIFO_PATH" "$TEMP_JSON" &
-        SELECTOR_PID=$!
-        
-        # Read the result from FIFO
-        SELECTED_COPILOTS=$(cat "$FIFO_PATH")
+        SELECTED_COPILOTS=$(./copilot_selector_wrapper.sh "$TEMP_JSON" 2>/dev/null)
         SELECTION_STATUS=$?
         
-        # Wait for selector to finish and clean up FIFO
-        wait $SELECTOR_PID 2>/dev/null || true
-        rm -f "$FIFO_PATH"
-        
         if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-            print_warning "FIFO selector encountered an issue, trying fallback methods..."
+            print_warning "Wrapper script approach failed, trying fallback methods..."
+        else
+            print_success "Interactive copilot selection completed successfully"
         fi
     fi
     
-    # Try wrapper script approach if FIFO failed
+    # Try built-in FIFO approach if wrapper failed
     if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-        if [[ -f "copilot_selector_wrapper.sh" ]]; then
-            print_info "Trying wrapper script approach..."
+        if [[ -f "select_copilots_interactive.py" ]]; then
+            chmod +x select_copilots_interactive.py
+            print_info "Trying built-in FIFO approach..."
             
-            SELECTED_COPILOTS=$(./copilot_selector_wrapper.sh "$TEMP_JSON" 2>/dev/null)
+            # Create FIFO for output
+            FIFO_PATH="/tmp/copilot_selector_fifo_$(whoami)_$(date +%H-%M-%S-%N)"
+            [ ! -p "$FIFO_PATH" ] && mkfifo "$FIFO_PATH"
+            
+            # Run the selector in background with FIFO output
+            uv run python select_copilots_interactive.py "$FIFO_PATH" "$TEMP_JSON" &
+            SELECTOR_PID=$!
+            
+            # Read the result from FIFO
+            SELECTED_COPILOTS=$(cat "$FIFO_PATH")
             SELECTION_STATUS=$?
             
+            # Wait for selector to finish and clean up FIFO
+            wait $SELECTOR_PID 2>/dev/null || true
+            rm -f "$FIFO_PATH"
+            
             if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-                print_warning "Wrapper script approach failed"
+                print_warning "Built-in FIFO approach failed"
             fi
         fi
     fi
