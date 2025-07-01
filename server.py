@@ -55,7 +55,7 @@ def extract_skill_parameters(skill_info) -> Dict[str, Dict[str, Any]]:
     
     for param in skill_info.parameters:
         # Skip non-chat parameters
-        copilotParameterType = param.copilotParameterType
+        copilotParameterType = getattr(param, 'copilotParameterType', None)
         if copilotParameterType != "CHAT":
             continue
 
