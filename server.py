@@ -54,6 +54,11 @@ def extract_skill_parameters(skill_info) -> Dict[str, Dict[str, Any]]:
         return parameters
     
     for param in skill_info.parameters:
+        # Skip non-chat parameters
+        copilotParameterType = param.copilotParameterType
+        if copilotParameterType != "CHAT":
+            continue
+
         param_name = str(param.name)
         
         # Determine parameter type based on isMulti field
