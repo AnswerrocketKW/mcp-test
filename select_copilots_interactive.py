@@ -278,6 +278,10 @@ class RobustCopilotSelector:
             # Return selected copilots
             return [self.copilots[i] for i in sorted(self.selected)]
             
+        except KeyboardInterrupt:
+            # User pressed Ctrl+C, exit gracefully
+            print("\nSelection cancelled by user.", file=sys.stderr)
+            return []
         except Exception as e:
             # On error, provide a fallback selection mechanism
             print(f"\nError in interactive mode: {e}", file=sys.stderr)
@@ -332,7 +336,7 @@ def main():
         sys.exit(1)
     
     # Check if we can use interactive mode
-    if not sys.stdin.isatty() or not sys.stderr.isatty():
+    if not sys.stdin.isatty():
         # Not a TTY, output all copilots
         print(json.dumps(copilot_data))
         return
