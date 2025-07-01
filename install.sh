@@ -258,8 +258,15 @@ select_copilots() {
     # Make the select_copilots.py script executable
     chmod +x select_copilots.py
     
-    # Run the TUI selector
-    SELECTED_COPILOTS=$(echo "$COPILOT_JSON" | uv run python select_copilots.py)
+    # Create temporary file for copilot data
+    TEMP_JSON=$(mktemp)
+    echo "$COPILOT_JSON" > "$TEMP_JSON"
+    
+    # Run the TUI selector with temp file
+    SELECTED_COPILOTS=$(uv run python select_copilots.py "$TEMP_JSON")
+    
+    # Clean up temp file
+    rm -f "$TEMP_JSON"
     
     if [[ $? -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
         print_error "No copilots selected. Installation cancelled."

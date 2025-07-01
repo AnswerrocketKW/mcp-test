@@ -22,6 +22,12 @@ class CopilotSelector:
         self.filtered_indices = list(range(len(copilots)))
         self.view_offset = 0  # For scrolling
         
+        # Check if we can use TUI
+        if os.name == 'nt':
+            raise Exception("Interactive TUI is not supported on Windows. Please select copilots manually.")
+        if not os.path.exists('/dev/tty'):
+            raise Exception("Interactive TUI requires /dev/tty device.")
+        
     def get_display_info(self, copilot: Dict) -> str:
         """Get formatted display information for a copilot."""
         name = copilot.get('name', 'Unknown')
@@ -138,19 +144,21 @@ class CopilotSelector:
             
     def get_key(self):
         """Get a single keypress."""
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(sys.stdin.fileno())
-            key = sys.stdin.read(1)
-            
-            # Handle escape sequences for arrow keys
-            if key == '\x1b':
-                key += sys.stdin.read(2)
+        # Open /dev/tty for keyboard input to avoid conflict with piped data
+        with open('/dev/tty', 'r') as tty_file:
+            fd = tty_file.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                key = tty_file.read(1)
                 
-            return key
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                # Handle escape sequences for arrow keys
+                if key == '\x1b':
+                    key += tty_file.read(2)
+                    
+                return key
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
             
     def toggle_selection(self):
         """Toggle selection of current copilot."""
@@ -167,35 +175,37 @@ class CopilotSelector:
         print("Search copilots (ESC to cancel, ENTER to confirm):")
         print(f"> {self.search_term}")
         
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        
-        try:
-            # Set terminal to raw mode for character-by-character input
-            tty.setraw(sys.stdin.fileno())
+        # Open /dev/tty for keyboard input
+        with open('/dev/tty', 'r') as tty_file:
+            fd = tty_file.fileno()
+            old_settings = termios.tcgetattr(fd)
             
-            while True:
-                key = sys.stdin.read(1)
+            try:
+                # Set terminal to raw mode for character-by-character input
+                tty.setraw(fd)
                 
-                if key == '\x1b':  # ESC
-                    break
-                elif key == '\r' or key == '\n':  # ENTER
-                    self.filter_copilots()
-                    break
-                elif key == '\x7f' or key == '\x08':  # Backspace
-                    if self.search_term:
-                        self.search_term = self.search_term[:-1]
-                        # Clear line and reprint
-                        sys.stdout.write('\r\033[K')
-                        sys.stdout.write(f"> {self.search_term}")
-                        sys.stdout.flush()
-                elif ord(key) >= 32 and ord(key) <= 126:  # Printable characters
-                    self.search_term += key
-                    sys.stdout.write(key)
-                    sys.stdout.flush()
+                while True:
+                    key = tty_file.read(1)
                     
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    if key == '\x1b':  # ESC
+                        break
+                    elif key == '\r' or key == '\n':  # ENTER
+                        self.filter_copilots()
+                        break
+                    elif key == '\x7f' or key == '\x08':  # Backspace
+                        if self.search_term:
+                            self.search_term = self.search_term[:-1]
+                            # Clear line and reprint
+                            sys.stdout.write('\r\033[K')
+                            sys.stdout.write(f"> {self.search_term}")
+                            sys.stdout.flush()
+                    elif ord(key) >= 32 and ord(key) <= 126:  # Printable characters
+                        self.search_term += key
+                        sys.stdout.write(key)
+                        sys.stdout.flush()
+                        
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
             
     def run(self) -> List[Dict]:
         """Run the interactive selector and return selected copilots."""
@@ -237,12 +247,22 @@ class CopilotSelector:
 
 def main():
     """Main function to run the copilot selector."""
-    # Read copilot data from stdin
-    try:
-        copilot_data = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
-        sys.exit(1)
+    # Read copilot data from file argument or stdin
+    if len(sys.argv) > 1:
+        # Read from file
+        try:
+            with open(sys.argv[1], 'r') as f:
+                copilot_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error: Could not read JSON file: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # Read from stdin (fallback)
+        try:
+            copilot_data = json.load(sys.stdin)
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
+            sys.exit(1)
         
     if not isinstance(copilot_data, list):
         print("Error: Expected a list of copilots", file=sys.stderr)
@@ -253,11 +273,19 @@ def main():
         sys.exit(1)
         
     # Run the selector
-    selector = CopilotSelector(copilot_data)
-    selected = selector.run()
+    selector = None
+    try:
+        selector = CopilotSelector(copilot_data)
+        selected = selector.run()
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        print("Falling back to manual selection...", file=sys.stderr)
+        # Simple fallback: select all copilots
+        selected = copilot_data
     
     # Clear screen before outputting results
-    selector.clear_screen()
+    if selector:
+        selector.clear_screen()
     
     if not selected:
         print("No copilots selected", file=sys.stderr)
