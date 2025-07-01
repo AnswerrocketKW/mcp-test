@@ -257,6 +257,7 @@ class CursesCopilotSelector:
 
 def main():
     """Main entry point."""
+    print("Starting interactive copilot selector...", file=sys.stderr)
     # Read copilot data
     if len(sys.argv) > 1:
         with open(sys.argv[1], 'r') as f:

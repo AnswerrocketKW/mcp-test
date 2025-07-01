@@ -293,13 +293,13 @@ select_copilots() {
         chmod +x select_copilots_interactive.py
         print_info "Launching interactive copilot selector..."
         
-        # Create a temporary file for output
+        # For curses-based selector, we need direct terminal access
+        # Create a temp file for the JSON output
         TEMP_OUTPUT=$(mktemp)
         
-        # Run the interactive selector with proper terminal handling
-        # Allow stderr to show on terminal, but capture stdout in temp file
-        # Add timeout to prevent hanging
-        if timeout 300 uv run python select_copilots_interactive.py "$TEMP_JSON" > "$TEMP_OUTPUT"; then
+        # Run the selector with full terminal access
+        # The selector will write JSON to stdout only after the UI closes
+        if uv run python select_copilots_interactive.py "$TEMP_JSON" > "$TEMP_OUTPUT" 2>/dev/tty; then
             SELECTED_COPILOTS=$(cat "$TEMP_OUTPUT")
             SELECTION_STATUS=0
         else
@@ -307,7 +307,7 @@ select_copilots() {
             print_warning "Interactive selector encountered an issue"
         fi
         
-        # Clean up temporary output file
+        # Clean up
         rm -f "$TEMP_OUTPUT"
     else
         # Try legacy selector
