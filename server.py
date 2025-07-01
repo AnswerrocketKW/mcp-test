@@ -54,35 +54,34 @@ def extract_skill_parameters(skill_info) -> Dict[str, Dict[str, Any]]:
         return parameters
     
     for param in skill_info.parameters:
-        # Skip non-chat parameters
-        copilotParameterType = getattr(param, 'copilotParameterType', None)
-        if copilotParameterType != "CHAT":
+        copilot_parameter_type = getattr(param, 'copilot_parameter_type', None)
+        if copilot_parameter_type != "CHAT":
             continue
 
         param_name = str(param.name)
         
         # Determine parameter type based on isMulti field
-        param_type = "array" if getattr(param, 'isMulti', False) else "string"
+        param_type = "array" if getattr(param, 'is_multi', False) else "string"
         
-        # Get description from llmDescription or description field
-        description = str(getattr(param, 'llmDescription', '') or 
+        # Get description from llm_description or description field
+        description = str(getattr(param, 'llm_description', '') or 
                          getattr(param, 'description', '') or 
                          f"Parameter {param_name}")
         
         # Check if parameter has constrained values
-        constrained_values = getattr(param, 'constrainedValues', None)
+        constrained_values = getattr(param, 'constrained_values', None)
         if constrained_values:
             description += f" (Allowed values: {', '.join(map(str, constrained_values))})"
         
         # Determine if required based on whether it has a value or inheritedValue
-        has_default = bool(getattr(param, 'value', None) or getattr(param, 'inheritedValue', None))
-        required = not has_default  # If no default value, it's required
+        # has_default = bool(getattr(param, 'value', None) or getattr(param, 'inherited_value', None))
+        # required = not has_default  # If no default value, it's required
         
         parameters[param_name] = {
             'type': param_type,
             'description': description,
-            'required': required,
-            'is_multi': getattr(param, 'isMulti', False),
+            'required': False,
+            'is_multi': getattr(param, 'is_multi', False),
             'constrained_values': constrained_values,
             'key': getattr(param, 'key', param_name)  # Use key field if available
         }
@@ -101,9 +100,9 @@ def create_skill_tool_with_annotations(skill_info):
     
     # Create ToolAnnotations with appropriate hints based on skill metadata
     annotations = ToolAnnotations(
-        title=skill_info.detailedName if hasattr(skill_info, 'detailedName') else skill_name,
+        title=skill_info.detailed_name if hasattr(skill_info, 'detailed_name') else skill_name,
         # Most copilot skills are read-only queries
-        readOnlyHint=not getattr(skill_info, 'schedulingOnly', False),
+        readOnlyHint=not getattr(skill_info, 'scheduling_only', False),
         # Skills are typically non-destructive
         destructiveHint=False,
         # Skills with same params should return same results
@@ -122,17 +121,20 @@ def create_skill_tool_with_annotations(skill_info):
                 for param_name, param_info in skill_params.items():
                     if param_name in kwargs:
                         value = kwargs[param_name]
+                        # if the value is null, don't include it in the processed_params
+                        if value is None:
+                            continue
                         # Use the 'key' field if available, otherwise use name
                         param_key = param_info.get('key', param_name)
                         
                         # Validate constrained values if present
-                        if param_info.get('constrained_values') and value not in param_info['constrained_values']:
-                            return {
-                                "success": False,
-                                "error": f"Invalid value for {param_name}. Allowed values: {param_info['constrained_values']}",
-                                "skill_name": skill_name,
-                                "skill_id": skill_id
-                            }
+                        # if param_info.get('constrained_values') and value not in param_info['constrained_values']:
+                        #     return {
+                        #         "success": False,
+                        #         "error": f"Invalid value for {param_name}. Allowed values: {param_info['constrained_values']}",
+                        #         "skill_name": skill_name,
+                        #         "skill_id": skill_id
+                        #     }
                         
                         processed_params[param_key] = value
                     elif param_info.get('required', False):
@@ -161,15 +163,24 @@ def create_skill_tool_with_annotations(skill_info):
                         "parameters_used": processed_params
                     }
                 
-                return {
-                    "success": True,
-                    "data": skill_result.data,
-                    "code": skill_result.code,
-                    "skill_name": skill_name,
-                    "skill_id": skill_id,
-                    "parameters_used": processed_params
-                }
-                
+                if skill_result.data != None:
+                    return {
+                        "success": True,
+                        "data": skill_result.data.get("final_message", ""),
+                        "code": skill_result.code,
+                        "skill_name": skill_name,
+                        "skill_id": skill_id,
+                        "parameters_used": processed_params
+                    }
+                else:
+                    return {
+                        "success": True,
+                        "data": "No data returned from skill",
+                        "code": skill_result.code,
+                        "skill_name": skill_name,
+                        "skill_id": skill_id,
+                        "parameters_used": processed_params
+                    }
             except Exception as e:
                 return {
                     "success": False,
@@ -186,8 +197,10 @@ def create_skill_tool_with_annotations(skill_info):
         # Add parameter annotations for better MCP integration
         sig_params = []
         for param_name, param_info in skill_params.items():
-            param_type = List[str] if param_info['type'] == 'array' else str
-            default = inspect.Parameter.empty if param_info.get('required', False) else None
+            is_required = param_info.get('required', False)
+            base_type = List[str] if param_info['type'] == 'array' else str
+            param_type = base_type if is_required else Optional[base_type]
+            default = inspect.Parameter.empty if is_required else None
             sig_params.append(
                 inspect.Parameter(
                     param_name,
