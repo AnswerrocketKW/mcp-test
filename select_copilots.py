@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Interactive TUI for selecting copilots to install.
-Uses built-in Python libraries for maximum compatibility.
+Optimized for handling hundreds of copilots with advanced search and filtering.
 """
 
 import sys
@@ -10,7 +10,8 @@ import os
 import tty
 import termios
 import re
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
+from collections import defaultdict
 
 
 class CopilotSelector:
@@ -21,22 +22,39 @@ class CopilotSelector:
         self.search_term = ""
         self.filtered_indices = list(range(len(copilots)))
         self.view_offset = 0  # For scrolling
+        self.search_mode_active = False
         
-        # Check if we can use TUI
-        if os.name == 'nt':
-            raise Exception("Interactive TUI is not supported on Windows. Please select copilots manually.")
-        if not os.path.exists('/dev/tty'):
-            raise Exception("Interactive TUI requires /dev/tty device.")
+        # Pre-compute searchable text for performance
+        self.searchable_texts = []
+        for copilot in copilots:
+            searchable = " ".join([
+                copilot.get('name', '').lower(),
+                copilot.get('description', '').lower(),
+                copilot.get('copilot_id', '').lower(),
+                # Include skill names in search
+                " ".join(skill.get('name', '').lower() for skill in copilot.get('skills', []))
+            ])
+            self.searchable_texts.append(searchable)
         
-    def get_display_info(self, copilot: Dict) -> str:
+        # Group copilots by name for duplicate detection
+        self.name_groups = defaultdict(list)
+        for idx, copilot in enumerate(copilots):
+            self.name_groups[copilot.get('name', 'Unknown')].append(idx)
+        
+    def get_display_info(self, copilot: Dict, copilot_idx: int) -> str:
         """Get formatted display information for a copilot."""
         name = copilot.get('name', 'Unknown')
         description = copilot.get('description', 'No description')
         skill_count = len(copilot.get('skills', []))
         copilot_id = copilot.get('copilot_id', 'Unknown ID')
         
+        # Check if this copilot has duplicates
+        duplicate_indicator = ""
+        if len(self.name_groups[name]) > 1:
+            duplicate_indicator = " ⚠️"
+        
         # Truncate description if too long
-        max_desc_len = 40
+        max_desc_len = 35
         if len(description) > max_desc_len:
             description = description[:max_desc_len-3] + "..."
         
@@ -44,24 +62,39 @@ class CopilotSelector:
         skill_text = f"{skill_count} skill{'s' if skill_count != 1 else ''}"
         id_short = copilot_id.split('-')[0] if '-' in copilot_id else copilot_id[:8]
         
-        return f"{name} • {skill_text} • {description} • ID: {id_short}"
+        # Highlight search matches
+        display_text = f"{name}{duplicate_indicator} • {skill_text} • {description} • ID: {id_short}"
+        
+        if self.search_term and self.search_mode_active:
+            # Simple highlighting - uppercase matching parts
+            pattern = re.compile(re.escape(self.search_term), re.IGNORECASE)
+            display_text = pattern.sub(lambda m: f"\033[1;33m{m.group()}\033[0m", display_text)
+        
+        return display_text
     
     def filter_copilots(self):
         """Filter copilots based on search term."""
         if not self.search_term:
             self.filtered_indices = list(range(len(self.copilots)))
         else:
-            pattern = re.compile(self.search_term, re.IGNORECASE)
+            # Use pre-computed searchable texts for performance
+            search_lower = self.search_term.lower()
             self.filtered_indices = []
-            for i, copilot in enumerate(self.copilots):
-                # Search in name, description, and copilot_id
-                searchable = f"{copilot.get('name', '')} {copilot.get('description', '')} {copilot.get('copilot_id', '')}"
-                if pattern.search(searchable):
-                    self.filtered_indices.append(i)
+            
+            # Support multiple search terms (space-separated)
+            search_terms = search_lower.split()
+            
+            for idx, searchable_text in enumerate(self.searchable_texts):
+                # All terms must match
+                if all(term in searchable_text for term in search_terms):
+                    self.filtered_indices.append(idx)
         
         # Reset current index if out of bounds
         if self.current_index >= len(self.filtered_indices):
             self.current_index = max(0, len(self.filtered_indices) - 1)
+        
+        # Reset view offset when filtering changes
+        self.view_offset = 0
             
     def clear_screen(self):
         """Clear the terminal screen."""
@@ -83,17 +116,28 @@ class CopilotSelector:
         # Header
         print("🚀 Select Copilots to Install")
         print("=" * min(cols, 80))
-        print()
-        print("Navigation: ↑/↓ or j/k | Select: SPACE | Search: / | Select All: a | Deselect All: n")
-        print("Confirm: ENTER | Quit: q")
-        print(f"Search: {self.search_term if self.search_term else '(press / to search)'}")
-        print()
-        print("Format: Name • Skills • Description • ID")
-        print("-" * min(cols, 80))
+        
+        # Status line
+        total_selected = len(self.selected)
+        filtered_selected = len([i for i in self.selected if i in self.filtered_indices])
+        status_parts = []
+        
+        if self.search_term:
+            status_parts.append(f"Search: '{self.search_term}'")
+        status_parts.append(f"Showing: {len(self.filtered_indices)}/{len(self.copilots)}")
+        status_parts.append(f"Selected: {filtered_selected} shown, {total_selected} total")
+        
+        print(" | ".join(status_parts))
         print()
         
+        # Controls
+        print("🔍 Search: / (type to filter) | Navigate: ↑/↓ or j/k | Select: SPACE")
+        print("Select All Shown: a | Deselect All Shown: n | Toggle All Shown: t")
+        print("Clear Search: ESC | Confirm: ENTER | Cancel: q")
+        print("-" * min(cols, 80))
+        
         # Calculate display window
-        header_lines = 9  # Updated to account for new header lines
+        header_lines = 8
         footer_lines = 3
         available_lines = rows - header_lines - footer_lines
         
@@ -105,13 +149,16 @@ class CopilotSelector:
             
         # Display copilots
         if not self.filtered_indices:
-            print("No copilots match your search.")
+            print("\n  No copilots match your search criteria.")
+            print(f"  Try different search terms or press ESC to clear the search.")
         else:
+            last_displayed_idx = -1
             for display_idx in range(available_lines):
                 actual_idx = self.view_offset + display_idx
                 if actual_idx >= len(self.filtered_indices):
                     break
                     
+                last_displayed_idx = actual_idx
                 copilot_idx = self.filtered_indices[actual_idx]
                 copilot = self.copilots[copilot_idx]
                 
@@ -128,19 +175,28 @@ class CopilotSelector:
                     checkbox = "[ ]"
                     
                 # Display line
-                info = self.get_display_info(copilot)
+                info = self.get_display_info(copilot, copilot_idx)
                 # Truncate if too long for terminal
                 max_len = cols - 8  # Account for cursor, checkbox, and spacing
                 if len(info) > max_len:
-                    info = info[:max_len-3] + "..."
+                    # Remove ANSI codes for length calculation
+                    clean_info = re.sub(r'\033\[[0-9;]*m', '', info)
+                    if len(clean_info) > max_len:
+                        info = info[:max_len-3] + "..."
                     
                 print(f"{cursor} {checkbox} {info}")
                 
-        # Footer
+        # Footer with context-sensitive hints
         print()
-        print(f"Selected: {len(self.selected)} of {len(self.copilots)} copilots")
-        if len(self.filtered_indices) < len(self.copilots):
-            print(f"Showing: {len(self.filtered_indices)} copilots (filtered)")
+        if self.filtered_indices and last_displayed_idx >= 0:
+            if last_displayed_idx < len(self.filtered_indices) - 1:
+                print(f"↓ {len(self.filtered_indices) - last_displayed_idx - 1} more below")
+        
+        # Quick stats
+        if len(self.name_groups) < len(self.copilots):
+            duplicate_count = sum(1 for group in self.name_groups.values() if len(group) > 1)
+            if duplicate_count > 0:
+                print(f"⚠️  {duplicate_count} copilot names have duplicates (marked with ⚠️)")
             
     def get_key(self):
         """Get a single keypress."""
@@ -154,7 +210,19 @@ class CopilotSelector:
                 
                 # Handle escape sequences for arrow keys
                 if key == '\x1b':
-                    key += tty_file.read(2)
+                    next_chars = tty_file.read(2)
+                    if next_chars == '[A':
+                        return 'UP'
+                    elif next_chars == '[B':
+                        return 'DOWN'
+                    elif next_chars == '[5':  # Page up
+                        tty_file.read(1)  # consume ~
+                        return 'PGUP'
+                    elif next_chars == '[6':  # Page down
+                        tty_file.read(1)  # consume ~
+                        return 'PGDN'
+                    else:
+                        return 'ESC'
                     
                 return key
             finally:
@@ -169,11 +237,9 @@ class CopilotSelector:
             else:
                 self.selected.add(copilot_idx)
                 
-    def search_mode(self):
-        """Enter search mode."""
-        self.clear_screen()
-        print("Search copilots (ESC to cancel, ENTER to confirm):")
-        print(f"> {self.search_term}")
+    def live_search_mode(self):
+        """Enter live search mode where typing immediately filters."""
+        self.search_mode_active = True
         
         # Open /dev/tty for keyboard input
         with open('/dev/tty', 'r') as tty_file:
@@ -185,51 +251,77 @@ class CopilotSelector:
                 tty.setraw(fd)
                 
                 while True:
+                    # Re-display with current search
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    self.display()
+                    # Show search cursor
+                    print(f"\n🔍 Search: {self.search_term}_")
+                    sys.stdout.flush()
+                    tty.setraw(fd)
+                    
                     key = tty_file.read(1)
                     
-                    if key == '\x1b':  # ESC
-                        break
-                    elif key == '\r' or key == '\n':  # ENTER
+                    if key == '\x1b':  # ESC - clear search and exit search mode
+                        self.search_term = ""
                         self.filter_copilots()
+                        break
+                    elif key == '\r' or key == '\n':  # ENTER - exit search mode
                         break
                     elif key == '\x7f' or key == '\x08':  # Backspace
                         if self.search_term:
                             self.search_term = self.search_term[:-1]
-                            # Clear line and reprint
-                            sys.stdout.write('\r\033[K')
-                            sys.stdout.write(f"> {self.search_term}")
-                            sys.stdout.flush()
+                            self.filter_copilots()
                     elif ord(key) >= 32 and ord(key) <= 126:  # Printable characters
                         self.search_term += key
-                        sys.stdout.write(key)
-                        sys.stdout.flush()
+                        self.filter_copilots()
                         
             finally:
+                self.search_mode_active = False
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
             
     def run(self) -> List[Dict]:
         """Run the interactive selector and return selected copilots."""
+        # Start with search mode if there are many copilots
+        if len(self.copilots) > 20:
+            print(f"\n📋 Found {len(self.copilots)} copilots. Starting in search mode...")
+            print("Press any key to begin searching, or ESC to see all copilots.")
+            self.get_key()
+            self.live_search_mode()
+        
         try:
             while True:
                 self.display()
                 key = self.get_key()
                 
-                if key == '\x1b[A' or key == 'k':  # Up arrow or k
+                if key == 'UP' or key == 'k':  # Up arrow or k
                     if self.current_index > 0:
                         self.current_index -= 1
-                elif key == '\x1b[B' or key == 'j':  # Down arrow or j
+                elif key == 'DOWN' or key == 'j':  # Down arrow or j
                     if self.current_index < len(self.filtered_indices) - 1:
                         self.current_index += 1
+                elif key == 'PGUP':  # Page up
+                    self.current_index = max(0, self.current_index - 10)
+                elif key == 'PGDN':  # Page down
+                    self.current_index = min(len(self.filtered_indices) - 1, self.current_index + 10)
                 elif key == ' ':  # Space
                     self.toggle_selection()
                 elif key == '/':  # Search
-                    self.search_mode()
+                    self.live_search_mode()
                 elif key == 'a':  # Select all visible
                     for idx in self.filtered_indices:
                         self.selected.add(idx)
                 elif key == 'n':  # Deselect all visible
                     for idx in self.filtered_indices:
                         self.selected.discard(idx)
+                elif key == 't':  # Toggle all visible
+                    for idx in self.filtered_indices:
+                        if idx in self.selected:
+                            self.selected.discard(idx)
+                        else:
+                            self.selected.add(idx)
+                elif key == 'ESC':  # Clear search
+                    self.search_term = ""
+                    self.filter_copilots()
                 elif key == '\r' or key == '\n':  # Enter
                     break
                 elif key == 'q' or key == '\x03':  # q or Ctrl+C
@@ -272,20 +364,25 @@ def main():
         print("Error: No copilots found", file=sys.stderr)
         sys.exit(1)
         
+    # Check if we can use TUI
+    if os.name == 'nt':
+        print("Error: Interactive TUI is not supported on Windows.", file=sys.stderr)
+        print("Selecting all copilots by default.", file=sys.stderr)
+        print(json.dumps(copilot_data))
+        return
+        
+    if not os.path.exists('/dev/tty'):
+        print("Error: Interactive TUI requires /dev/tty device.", file=sys.stderr)
+        print("Selecting all copilots by default.", file=sys.stderr)
+        print(json.dumps(copilot_data))
+        return
+    
     # Run the selector
-    selector = None
-    try:
-        selector = CopilotSelector(copilot_data)
-        selected = selector.run()
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        print("Falling back to manual selection...", file=sys.stderr)
-        # Simple fallback: select all copilots
-        selected = copilot_data
+    selector = CopilotSelector(copilot_data)
+    selected = selector.run()
     
     # Clear screen before outputting results
-    if selector:
-        selector.clear_screen()
+    selector.clear_screen()
     
     if not selected:
         print("No copilots selected", file=sys.stderr)

@@ -198,6 +198,17 @@ setup_project() {
     # Clone the repository
     print_info "Cloning repository..."
     git clone https://github.com/AnswerrocketKW/mcp-test.git "$PROJECT_DIR"
+    
+    # Copy selector scripts if they exist in the current directory
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    if [[ -f "$SCRIPT_DIR/select_copilots.py" ]]; then
+        cp "$SCRIPT_DIR/select_copilots.py" "$PROJECT_DIR/"
+    fi
+    if [[ -f "$SCRIPT_DIR/select_copilots_simple.py" ]]; then
+        cp "$SCRIPT_DIR/select_copilots_simple.py" "$PROJECT_DIR/"
+        print_info "Copied copilot selector scripts"
+    fi
+    
     cd "$PROJECT_DIR"
     
     print_success "Repository cloned to $PROJECT_DIR"
@@ -255,20 +266,43 @@ select_copilots() {
     print_step "Select copilots to install..."
     echo
     
-    # Make the select_copilots.py script executable
-    chmod +x select_copilots.py
-    
     # Create temporary file for copilot data
     TEMP_JSON=$(mktemp)
     echo "$COPILOT_JSON" > "$TEMP_JSON"
     
-    # Run the TUI selector with temp file
-    SELECTED_COPILOTS=$(uv run python select_copilots.py "$TEMP_JSON")
+    # Try TUI selector first, fall back to simple selector if it fails
+    if [[ -f "select_copilots.py" ]]; then
+        chmod +x select_copilots.py
+        print_info "Launching interactive copilot selector..."
+        SELECTED_COPILOTS=$(uv run python select_copilots.py "$TEMP_JSON" 2>/tmp/select_error.log)
+        
+        if [[ $? -ne 0 ]]; then
+            print_warning "Interactive selector failed, using simple selector..."
+            if [[ -f "select_copilots_simple.py" ]]; then
+                chmod +x select_copilots_simple.py
+                SELECTED_COPILOTS=$(uv run python select_copilots_simple.py "$TEMP_JSON")
+            else
+                print_error "No selector script found"
+                rm -f "$TEMP_JSON"
+                exit 1
+            fi
+        fi
+    elif [[ -f "select_copilots_simple.py" ]]; then
+        chmod +x select_copilots_simple.py
+        SELECTED_COPILOTS=$(uv run python select_copilots_simple.py "$TEMP_JSON")
+    else
+        print_error "No copilot selector script found"
+        rm -f "$TEMP_JSON"
+        exit 1
+    fi
+    
+    # Check if selection was successful before cleaning up
+    SELECTION_STATUS=$?
     
     # Clean up temp file
     rm -f "$TEMP_JSON"
     
-    if [[ $? -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
+    if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
         print_error "No copilots selected. Installation cancelled."
         exit 1
     fi
