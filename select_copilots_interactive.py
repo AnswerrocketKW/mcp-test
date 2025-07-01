@@ -55,7 +55,7 @@ class RobustCopilotSelector:
     
     def clear_screen(self):
         """Clear the terminal screen."""
-        print("\033[2J\033[H", end='', flush=True)
+        print("\033[2J\033[H", end='', flush=True, file=sys.stderr)
     
     def get_display_info(self, copilot: Dict, copilot_idx: int) -> str:
         """Get formatted display information for a copilot."""
@@ -108,23 +108,23 @@ class RobustCopilotSelector:
         rows, cols = self.get_terminal_size()
         
         # Header
-        print("🚀 Select Copilots to Install")
-        print("=" * min(cols, 80))
+        print("🚀 Select Copilots to Install", file=sys.stderr)
+        print("=" * min(cols, 80), file=sys.stderr)
         
         # Search display
         if self.search_term:
-            print(f"🔍 Search: {self.search_term}")
+            print(f"🔍 Search: {self.search_term}", file=sys.stderr)
         
         # Status line
         total_selected = len(self.selected)
         filtered_selected = len([i for i in self.selected if i in self.filtered_indices])
-        print(f"Showing: {len(self.filtered_indices)}/{len(self.copilots)} | Selected: {filtered_selected} shown, {total_selected} total")
-        print()
+        print(f"Showing: {len(self.filtered_indices)}/{len(self.copilots)} | Selected: {filtered_selected} shown, {total_selected} total", file=sys.stderr)
+        print(file=sys.stderr)
         
         # Controls
-        print("Navigate: j/k or ↑/↓ | Select: SPACE | Search: / | Clear search: ESC")
-        print("Select all: a | Deselect all: d | Confirm: ENTER | Cancel: q")
-        print("-" * min(cols, 80))
+        print("Navigate: j/k or ↑/↓ | Select: SPACE | Search: / | Clear search: ESC", file=sys.stderr)
+        print("Select all: a | Deselect all: d | Confirm: ENTER | Cancel: q", file=sys.stderr)
+        print("-" * min(cols, 80), file=sys.stderr)
         
         # Calculate display window
         header_lines = 8
@@ -139,7 +139,7 @@ class RobustCopilotSelector:
         
         # Display copilots
         if not self.filtered_indices:
-            print("\n  No copilots match your search criteria.")
+            print("\n  No copilots match your search criteria.", file=sys.stderr)
         else:
             for display_idx in range(available_lines):
                 actual_idx = self.view_offset + display_idx
@@ -159,11 +159,11 @@ class RobustCopilotSelector:
                 if len(info) > max_len:
                     info = info[:max_len-3] + "..."
                 
-                print(f"{cursor} {checkbox} {info}")
+                print(f"{cursor} {checkbox} {info}", file=sys.stderr)
         
         # Footer
         if self.view_offset + available_lines < len(self.filtered_indices):
-            print(f"\n↓ {len(self.filtered_indices) - self.view_offset - available_lines} more below")
+            print(f"\n↓ {len(self.filtered_indices) - self.view_offset - available_lines} more below", file=sys.stderr)
     
     def get_char(self, timeout=None):
         """Get a single character with optional timeout."""
@@ -186,7 +186,7 @@ class RobustCopilotSelector:
     def handle_search_input(self):
         """Handle search mode input."""
         self.display()
-        print(f"\n🔍 Search: {self.search_term}_", end='', flush=True)
+        print(f"\n🔍 Search: {self.search_term}_", end='', flush=True, file=sys.stderr)
         
         while True:
             char = self.get_char()
@@ -202,12 +202,12 @@ class RobustCopilotSelector:
                     self.search_term = self.search_term[:-1]
                     self.filter_copilots()
                     self.display()
-                    print(f"\n🔍 Search: {self.search_term}_", end='', flush=True)
+                    print(f"\n🔍 Search: {self.search_term}_", end='', flush=True, file=sys.stderr)
             elif char and ord(char) >= 32 and ord(char) <= 126:  # Printable
                 self.search_term += char
                 self.filter_copilots()
                 self.display()
-                print(f"\n🔍 Search: {self.search_term}_", end='', flush=True)
+                print(f"\n🔍 Search: {self.search_term}_", end='', flush=True, file=sys.stderr)
     
     def run(self) -> List[Dict]:
         """Run the interactive selector."""
@@ -218,8 +218,8 @@ class RobustCopilotSelector:
             
             # If many copilots, start with search
             if len(self.copilots) > 20:
-                print(f"\n📋 Found {len(self.copilots)} copilots.")
-                print("Press '/' to search or any other key to browse all...")
+                print(f"\n📋 Found {len(self.copilots)} copilots.", file=sys.stderr)
+                print("Press '/' to search or any other key to browse all...", file=sys.stderr)
                 char = self.get_char(timeout=3)  # 3 second timeout
                 if char == '/':
                     self.handle_search_input()
@@ -292,18 +292,18 @@ class RobustCopilotSelector:
     
     def fallback_selection(self) -> List[Dict]:
         """Simple fallback selection when TUI fails."""
-        print("\n=== Copilot Selection (Simple Mode) ===")
-        print("Available copilots:")
+        print("\n=== Copilot Selection (Simple Mode) ===", file=sys.stderr)
+        print("Available copilots:", file=sys.stderr)
         
         for idx, copilot in enumerate(self.copilots[:20]):  # Show first 20
             name = copilot.get('name', 'Unknown')
             skills = len(copilot.get('skills', []))
-            print(f"{idx + 1}. {name} ({skills} skills)")
+            print(f"{idx + 1}. {name} ({skills} skills)", file=sys.stderr)
         
         if len(self.copilots) > 20:
-            print(f"... and {len(self.copilots) - 20} more")
+            print(f"... and {len(self.copilots) - 20} more", file=sys.stderr)
         
-        print("\nEnter copilot numbers to install (comma-separated), or 'all' for all:")
+        print("\nEnter copilot numbers to install (comma-separated), or 'all' for all:", file=sys.stderr)
         selection = input().strip()
         
         if selection.lower() == 'all':
@@ -313,12 +313,13 @@ class RobustCopilotSelector:
             indices = [int(x.strip()) - 1 for x in selection.split(',')]
             return [self.copilots[i] for i in indices if 0 <= i < len(self.copilots)]
         except:
-            print("Invalid selection. Selecting all copilots.")
+            print("Invalid selection. Selecting all copilots.", file=sys.stderr)
             return self.copilots
 
 
 def main():
     """Main entry point."""
+    print("Starting interactive copilot selector...", file=sys.stderr)
     # Read copilot data
     if len(sys.argv) > 1:
         with open(sys.argv[1], 'r') as f:
@@ -331,7 +332,7 @@ def main():
         sys.exit(1)
     
     # Check if we can use interactive mode
-    if not sys.stdin.isatty():
+    if not sys.stdin.isatty() or not sys.stderr.isatty():
         # Not a TTY, output all copilots
         print(json.dumps(copilot_data))
         return

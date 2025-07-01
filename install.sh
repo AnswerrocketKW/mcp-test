@@ -293,17 +293,24 @@ select_copilots() {
         chmod +x select_copilots_interactive.py
         print_info "Launching interactive copilot selector..."
         
-        # Run with explicit terminal allocation
-        SELECTED_COPILOTS=$(uv run python select_copilots_interactive.py "$TEMP_JSON" </dev/tty 2>/tmp/select_error.log)
-        SELECTION_STATUS=$?
+        # Create a temporary file for output
+        TEMP_OUTPUT=$(mktemp)
         
-        if [[ $SELECTION_STATUS -ne 0 ]]; then
+        # Run the interactive selector with proper terminal handling
+        if uv run python select_copilots_interactive.py "$TEMP_JSON" > "$TEMP_OUTPUT" 2>/tmp/select_error.log; then
+            SELECTED_COPILOTS=$(cat "$TEMP_OUTPUT")
+            SELECTION_STATUS=0
+        else
+            SELECTION_STATUS=$?
             print_warning "Interactive selector encountered an issue"
             # Show error details if available
             if [[ -f /tmp/select_error.log ]] && [[ -s /tmp/select_error.log ]]; then
                 print_info "Error details: $(cat /tmp/select_error.log | head -1)"
             fi
         fi
+        
+        # Clean up temporary output file
+        rm -f "$TEMP_OUTPUT"
     else
         # Try legacy selector
         if [[ -f "select_copilots.py" ]]; then
