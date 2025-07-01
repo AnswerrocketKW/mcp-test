@@ -203,21 +203,17 @@ setup_project() {
     SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
     SCRIPTS_COPIED=0
     
+    if [[ -f "$SCRIPT_DIR/copilot_selector_wrapper.sh" ]]; then
+        cp "$SCRIPT_DIR/copilot_selector_wrapper.sh" "$PROJECT_DIR/"
+        chmod +x "$PROJECT_DIR/copilot_selector_wrapper.sh"
+        SCRIPTS_COPIED=1
+    fi
     if [[ -f "$SCRIPT_DIR/select_copilots_interactive.py" ]]; then
         cp "$SCRIPT_DIR/select_copilots_interactive.py" "$PROJECT_DIR/"
         SCRIPTS_COPIED=1
     fi
-    if [[ -f "$SCRIPT_DIR/select_copilots.py" ]]; then
-        cp "$SCRIPT_DIR/select_copilots.py" "$PROJECT_DIR/"
-        SCRIPTS_COPIED=1
-    fi
     if [[ -f "$SCRIPT_DIR/select_copilots_simple.py" ]]; then
         cp "$SCRIPT_DIR/select_copilots_simple.py" "$PROJECT_DIR/"
-        SCRIPTS_COPIED=1
-    fi
-    if [[ -f "$SCRIPT_DIR/copilot_selector_wrapper.sh" ]]; then
-        cp "$SCRIPT_DIR/copilot_selector_wrapper.sh" "$PROJECT_DIR/"
-        chmod +x "$PROJECT_DIR/copilot_selector_wrapper.sh"
         SCRIPTS_COPIED=1
     fi
     
@@ -286,14 +282,7 @@ select_copilots() {
     TEMP_JSON=$(mktemp)
     echo "$COPILOT_JSON" > "$TEMP_JSON"
     
-    # Debug: Check if we have a TTY
-    if [[ -t 0 ]] && [[ -t 1 ]]; then
-        print_info "Interactive terminal detected"
-    else
-        print_warning "Non-interactive environment detected"
-    fi
-    
-    # Try wrapper script approach first (most reliable)
+    # Try wrapper script approach first
     if [[ -f "copilot_selector_wrapper.sh" ]]; then
         chmod +x copilot_selector_wrapper.sh
         print_info "Launching interactive copilot selector..."
@@ -301,84 +290,14 @@ select_copilots() {
         SELECTED_COPILOTS=$(./copilot_selector_wrapper.sh "$TEMP_JSON" 2>/dev/null)
         SELECTION_STATUS=$?
         
-        if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-            print_warning "Wrapper script approach failed, trying fallback methods..."
-        else
+        if [[ $SELECTION_STATUS -eq 0 ]] && [[ -n "$SELECTED_COPILOTS" ]]; then
             print_success "Interactive copilot selection completed successfully"
         fi
+    else
+        SELECTION_STATUS=1
     fi
     
-    # Try built-in FIFO approach if wrapper failed
-    if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-        if [[ -f "select_copilots_interactive.py" ]]; then
-            chmod +x select_copilots_interactive.py
-            print_info "Trying built-in FIFO approach..."
-            
-            # Create FIFO for output
-            FIFO_PATH="/tmp/copilot_selector_fifo_$(whoami)_$(date +%H-%M-%S-%N)"
-            [ ! -p "$FIFO_PATH" ] && mkfifo "$FIFO_PATH"
-            
-            # Run the selector in background with FIFO output
-            uv run python select_copilots_interactive.py "$FIFO_PATH" "$TEMP_JSON" &
-            SELECTOR_PID=$!
-            
-            # Read the result from FIFO
-            SELECTED_COPILOTS=$(cat "$FIFO_PATH")
-            SELECTION_STATUS=$?
-            
-            # Wait for selector to finish and clean up FIFO
-            wait $SELECTOR_PID 2>/dev/null || true
-            rm -f "$FIFO_PATH"
-            
-            if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-                print_warning "Built-in FIFO approach failed"
-            fi
-        fi
-    fi
-    
-    # Fallback to script command approach if wrapper failed
-    if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-        if [[ -f "select_copilots_interactive.py" ]]; then
-            print_info "Trying script command approach..."
-            
-            # Run the selector with full terminal access
-            # Note: macOS 'script' command syntax differs from Linux
-            if [[ "$OS" == "macos" ]]; then
-                # macOS version - try without script first
-                if [[ -t 0 ]] && [[ -t 1 ]]; then
-                    print_info "Direct terminal execution..."
-                    SELECTED_COPILOTS=$(uv run python select_copilots_interactive.py "$TEMP_JSON" 2>/dev/null | grep -E '^\[.*\]$' | tail -n 1)
-                else
-                    SELECTED_COPILOTS=$(script -q /dev/null uv run python select_copilots_interactive.py "$TEMP_JSON" | grep -E '^\[.*\]$' | tail -n 1)
-                fi
-            else
-                # Linux version  
-                SELECTED_COPILOTS=$(script -qc "uv run python select_copilots_interactive.py '$TEMP_JSON'" /dev/null | grep -E '^\[.*\]$' | tail -n 1)
-            fi
-            SELECTION_STATUS=$?
-            
-            if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-                print_warning "Script command approach failed"
-            fi
-        fi
-    fi
-    
-    # Try legacy selector if available
-    if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
-        if [[ -f "select_copilots.py" ]]; then
-            chmod +x select_copilots.py
-            print_info "Trying legacy interactive copilot selector..."
-            
-            SELECTED_COPILOTS=$(uv run python select_copilots.py "$TEMP_JSON" 2>/tmp/select_error.log)
-            SELECTION_STATUS=$?
-            
-            if [[ $SELECTION_STATUS -ne 0 ]]; then
-                print_warning "Legacy selector failed"
-            fi
-        fi
-    fi
-    
-    # Final fallback to simple selector
+    # Fallback to simple selector if interactive failed
     if [[ $SELECTION_STATUS -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
         if [[ -f "select_copilots_simple.py" ]]; then
             chmod +x select_copilots_simple.py
@@ -386,7 +305,7 @@ select_copilots() {
             SELECTED_COPILOTS=$(uv run python select_copilots_simple.py "$TEMP_JSON")
             SELECTION_STATUS=$?
         else
-            print_error "No fallback selector found"
+            print_error "No selector found"
             rm -f "$TEMP_JSON"
             exit 1
         fi

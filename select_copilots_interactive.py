@@ -6,8 +6,7 @@ Interactive TUI for selecting copilots with dropdown-style search using curses.
 import sys
 import json
 import curses
-import os
-from typing import List, Dict, Set, Optional
+from typing import List, Dict, Set
 from dataclasses import dataclass, field
 
 
@@ -23,10 +22,9 @@ class DropdownState:
 
 
 class CursesCopilotSelector:
-    def __init__(self, copilots: List[Dict], output_fifo: Optional[str] = None):
+    def __init__(self, copilots: List[Dict]):
         self.copilots = copilots
         self.state = DropdownState(filtered_indices=list(range(len(copilots))))
-        self.output_fifo = output_fifo
         
         # Pre-compute searchable text
         self.searchable_texts = []
@@ -162,122 +160,7 @@ class CursesCopilotSelector:
             stdscr.addstr(center_y + 1, 5, "Exit without selecting?")
             stdscr.addstr(center_y + 3, 5, "Press Enter to exit or Esc to continue")
     
-    def write_output(self, selected_copilots: List[Dict]):
-        """Write output to appropriate destination."""
-        output_json = json.dumps(selected_copilots)
-        
-        if self.output_fifo:
-            # Write to FIFO
-            try:
-                with open(self.output_fifo, 'w') as f:
-                    f.write(output_json)
-                    f.flush()
-            except Exception as e:
-                # Fallback to stdout
-                print(output_json)
-        else:
-            # Write to stdout
-            print(output_json)
-    
-    def run_curses_with_tty(self) -> List[Dict]:
-        """Run curses with direct TTY access."""
-        # Open TTY directly for curses
-        tty_in = open('/dev/tty', 'r')
-        tty_out = open('/dev/tty', 'w')
-        
-        # Save original stdin/stdout
-        orig_stdin = sys.stdin
-        orig_stdout = sys.stdout
-        
-        try:
-            # Redirect stdin/stdout to TTY
-            sys.stdin = tty_in
-            sys.stdout = tty_out
-            
-            # Initialize curses with TTY
-            stdscr = curses.initscr()
-            curses.curs_set(0)  # Hide cursor
-            stdscr.keypad(True)  # Enable special keys
-            stdscr.timeout(50)  # Non-blocking input with 50ms timeout
-            
-            while True:
-                # Draw appropriate screen
-                if self.state.confirm_dialog:
-                    self.draw_confirm(stdscr)
-                else:
-                    self.draw_main(stdscr)
-                
-                stdscr.refresh()
-                
-                # Get input
-                try:
-                    key = stdscr.getch()
-                except:
-                    continue
-                
-                if key == -1:  # No input
-                    continue
-                
-                # Handle input based on state
-                if self.state.confirm_dialog:
-                    # Confirmation dialog input
-                    if key == curses.KEY_UP or key == curses.KEY_DOWN:
-                        self.state.confirm_save = not self.state.confirm_save
-                    elif key == ord('\n') or key == ord('\r'):  # Enter
-                        if len(self.state.selected_indices) > 0:
-                            if self.state.confirm_save:
-                                return [self.copilots[i] for i in sorted(self.state.selected_indices)]
-                            else:
-                                return []
-                        else:
-                            return []
-                    elif key == 27:  # ESC
-                        self.state.confirm_dialog = False
-                else:
-                    # Main interface input
-                    if key == curses.KEY_UP:
-                        if self.state.current_index > 0:
-                            self.state.current_index -= 1
-                    elif key == curses.KEY_DOWN:
-                        if self.state.current_index < len(self.state.filtered_indices) - 1:
-                            self.state.current_index += 1
-                    elif key == ord('\n') or key == ord('\r'):  # Enter
-                        if self.state.filtered_indices:
-                            copilot_idx = self.state.filtered_indices[self.state.current_index]
-                            if copilot_idx in self.state.selected_indices:
-                                self.state.selected_indices.remove(copilot_idx)
-                            else:
-                                self.state.selected_indices.add(copilot_idx)
-                    elif key == 27:  # ESC
-                        self.state.confirm_dialog = True
-                        self.state.confirm_save = True
-                    elif key == curses.KEY_BACKSPACE or key == 127 or key == 8:
-                        if self.state.query:
-                            self.state.query = self.state.query[:-1]
-                            self.filter_copilots()
-                    elif 32 <= key <= 126:  # Printable characters
-                        self.state.query += chr(key)
-                        self.filter_copilots()
-                    elif key == 3:  # Ctrl+C
-                        return []
-        
-        finally:
-            # Cleanup
-            try:
-                curses.endwin()
-            except:
-                pass
-            
-            # Restore original streams
-            sys.stdin = orig_stdin
-            sys.stdout = orig_stdout
-            
-            # Close TTY files
-            try:
-                tty_in.close()
-                tty_out.close()
-            except:
-                pass
+
     
     def run_curses(self, stdscr) -> List[Dict]:
         """Main curses loop."""
@@ -350,14 +233,9 @@ class CursesCopilotSelector:
     def run(self) -> List[Dict]:
         """Run the selector."""
         try:
-            # If using FIFO output, use direct TTY access
-            if self.output_fifo:
-                return self.run_curses_with_tty()
-            else:
-                return curses.wrapper(self.run_curses)
+            return curses.wrapper(self.run_curses)
         except Exception as e:
-            # Write error to stderr (not affected by redirection)
-            print(f"\nCurses Error: {e}", file=sys.stderr)
+            print(f"\nError: {e}", file=sys.stderr)
             return self.fallback_selection()
     
     def fallback_selection(self) -> List[Dict]:
@@ -381,26 +259,6 @@ class CursesCopilotSelector:
 
 def main():
     """Main entry point."""
-    # Check if we're in FIFO mode (first argument is FIFO path, second is JSON file)
-    if len(sys.argv) == 3 and sys.argv[1].startswith('/tmp/'):
-        fifo_path = sys.argv[1]
-        json_file = sys.argv[2]
-        
-        print(f"Starting interactive copilot selector with FIFO: {fifo_path}", file=sys.stderr)
-        
-        with open(json_file, 'r') as f:
-            copilot_data = json.load(f)
-            
-        selector = CursesCopilotSelector(copilots=copilot_data, output_fifo=fifo_path)
-        selected = selector.run()
-        selector.write_output(selected)
-        
-        if not selected:
-            sys.exit(1)
-            
-        return
-    
-    # Original mode
     print("Starting interactive copilot selector...", file=sys.stderr)
     
     # Read copilot data
@@ -420,7 +278,7 @@ def main():
         return
     
     # Run selector
-    selector = CursesCopilotSelector(copilots=copilot_data)
+    selector = CursesCopilotSelector(copilot_data)
     selected = selector.run()
     
     if not selected:
