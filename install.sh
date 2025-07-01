@@ -245,20 +245,42 @@ get_copilot_metadata() {
         exit 1
     fi
     
-    # Parse the JSON to get copilot IDs and names
-    COPILOT_DATA=$(echo "$COPILOT_JSON" | uv run python -c "
+    # Store the full JSON for later use
+    COPILOT_COUNT=$(echo "$COPILOT_JSON" | uv run python -c "import sys, json; print(len(json.load(sys.stdin)))")
+    print_success "Found $COPILOT_COUNT copilots"
+}
+
+# Select copilots using TUI
+select_copilots() {
+    print_step "Select copilots to install..."
+    echo
+    
+    # Make the select_copilots.py script executable
+    chmod +x select_copilots.py
+    
+    # Run the TUI selector
+    SELECTED_COPILOTS=$(echo "$COPILOT_JSON" | uv run python select_copilots.py)
+    
+    if [[ $? -ne 0 ]] || [[ -z "$SELECTED_COPILOTS" ]]; then
+        print_error "No copilots selected. Installation cancelled."
+        exit 1
+    fi
+    
+    # Parse the selected copilots to get IDs and names
+    COPILOT_DATA=$(echo "$SELECTED_COPILOTS" | uv run python -c "
 import sys, json
 data = json.load(sys.stdin)
 for copilot in data:
     print(f\"{copilot['copilot_id']}|{copilot['name']}\")
 ")
     
-    print_success "Found $(echo "$COPILOT_DATA" | wc -l) copilots"
+    SELECTED_COUNT=$(echo "$COPILOT_DATA" | wc -l)
+    print_success "Selected $SELECTED_COUNT copilots for installation"
 }
 
-# Install MCP servers for each copilot
+# Install MCP servers for selected copilots
 install_mcp_servers() {
-    print_step "Installing MCP servers for each copilot..."
+    print_step "Installing MCP servers for selected copilots..."
     
     # Check if mcp command is available through uv
     if ! uv run mcp --help > /dev/null 2>&1; then
@@ -306,6 +328,7 @@ main() {
     setup_python
     setup_python_env
     get_copilot_metadata
+    select_copilots
     install_mcp_servers
     
     echo
