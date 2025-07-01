@@ -259,6 +259,30 @@ class CursesCopilotSelector:
 
 def main():
     """Main entry point."""
+    # Check if we're in FIFO mode (first argument is FIFO path, second is JSON file)
+    if len(sys.argv) == 3 and sys.argv[1].startswith('/tmp/'):
+        fifo_path = sys.argv[1]
+        json_file = sys.argv[2]
+        
+        print(f"Starting interactive copilot selector with FIFO: {fifo_path}", file=sys.stderr)
+        
+        with open(json_file, 'r') as f:
+            copilot_data = json.load(f)
+            
+        selector = CursesCopilotSelector(copilot_data)
+        selected = selector.run()
+        
+        # Write output to FIFO
+        if selected:
+            with open(fifo_path, 'w') as f:
+                f.write(json.dumps(selected))
+                f.flush()
+        else:
+            sys.exit(1)
+            
+        return
+    
+    # Original mode
     print("Starting interactive copilot selector...", file=sys.stderr)
     
     # Read copilot data
