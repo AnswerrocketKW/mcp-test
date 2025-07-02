@@ -245,7 +245,13 @@ async def register_skill_tool(skill_info):
     
     try:
         skill_name = str(skill_info.name)
-        skill_description = str(skill_info.description or skill_info.detailed_description or f"Execute {skill_name}")
+
+        # # log the skill description by saving tmp
+        # file = open("/tmp/skill_description.txt", "w")
+        # file.write(str(skill_info.description) + "\n" + str(skill_info.detailed_description) + "\n" + str(skill_info))
+        # file.close()
+
+        skill_description = str(skill_info.detailed_description) or f"Execute {skill_name}"
         
         # Create a safe tool name (alphanumeric and underscores only)
         safe_tool_name = "".join(c if c.isalnum() or c == '_' else '_' for c in skill_name.lower())
@@ -258,7 +264,7 @@ async def register_skill_tool(skill_info):
         mcp.add_tool(
             skill_tool,
             name=safe_tool_name,
-            description=f"{skill_description[:200]}{'...' if len(skill_description) > 200 else ''}",
+            description=skill_description,
             annotations=annotations
         )
         
