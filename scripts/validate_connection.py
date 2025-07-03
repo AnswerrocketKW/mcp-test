@@ -17,6 +17,7 @@ def main():
     
     try:
         client = AnswerRocketClient(url=ar_url, token=ar_token)
+        
         if not client.can_connect():
             print("Error: Failed to connect to AnswerRocket", file=sys.stderr)
             sys.exit(1)
