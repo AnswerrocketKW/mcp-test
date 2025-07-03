@@ -82,8 +82,7 @@ def extract_skill_parameters(skill_info) -> Dict[str, Dict[str, Any]]:
             'description': description,
             'required': False,
             'is_multi': getattr(param, 'is_multi', False),
-            'constrained_values': constrained_values,
-            'key': getattr(param, 'key', param_name)  # Use key field if available
+            'constrained_values': constrained_values
         }
     
     return parameters
@@ -124,8 +123,8 @@ def create_skill_tool_with_annotations(skill_info):
                         # if the value is null, don't include it in the processed_params
                         if value is None:
                             continue
-                        # Use the 'key' field if available, otherwise use name
-                        param_key = param_info.get('key', param_name)
+                        # Use param_name directly
+                        param_key = param_name
                         
                         # Validate constrained values if present
                         # if param_info.get('constrained_values') and value not in param_info['constrained_values']:
