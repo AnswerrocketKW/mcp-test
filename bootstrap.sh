@@ -5,7 +5,22 @@ set -e
 # Configuration
 GITHUB_REPO="AnswerrocketKW/mcp-test"
 GITHUB_BRANCH="main"
-TEMP_DIR="/tmp/answerrocket-mcp-installer-$$"
+
+# Cross-platform application directory
+get_app_dir() {
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+        # Windows
+        echo "$APPDATA/AnswerRocket/mcp-server"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        echo "$HOME/Library/Application Support/AnswerRocket/mcp-server"
+    else
+        # Linux and other Unix-like systems
+        echo "$HOME/.local/share/answerrocket/mcp-server"
+    fi
+}
+
+APP_DIR=$(get_app_dir)
 
 # Colors for output
 RED='\033[0;31m'
@@ -31,17 +46,6 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Cleanup function
-cleanup() {
-    if [ -d "$TEMP_DIR" ]; then
-        log_info "Cleaning up temporary files..."
-        rm -rf "$TEMP_DIR"
-    fi
-}
-
-# Set up cleanup on exit
-trap cleanup EXIT
-
 # Main bootstrap function
 main() {
     echo "AnswerRocket MCP Server Bootstrap Installer"
@@ -54,16 +58,31 @@ main() {
         exit 1
     fi
     
-    # Create temporary directory
-    log_info "Creating temporary directory: $TEMP_DIR"
-    mkdir -p "$TEMP_DIR"
-    
-    # Clone the repository
-    log_info "Cloning repository from GitHub..."
-    git clone -b "$GITHUB_BRANCH" "https://github.com/$GITHUB_REPO.git" "$TEMP_DIR"
-    
-    # Change to the repository directory
-    cd "$TEMP_DIR"
+    # Check if directory already exists
+    if [[ -d "$APP_DIR" ]]; then
+        log_warning "Directory $APP_DIR already exists."
+        read -p "Do you want to update it? (y/N): " CONFIRM
+        if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+            log_info "Updating existing installation..."
+            cd "$APP_DIR"
+            git fetch origin
+            git reset --hard "origin/$GITHUB_BRANCH"
+            log_success "Repository updated"
+        else
+            log_info "Using existing installation"
+            cd "$APP_DIR"
+        fi
+    else
+        # Create parent directory if it doesn't exist
+        log_info "Creating application directory: $APP_DIR"
+        mkdir -p "$(dirname "$APP_DIR")"
+        
+        # Clone the repository
+        log_info "Cloning repository from GitHub..."
+        git clone -b "$GITHUB_BRANCH" "https://github.com/$GITHUB_REPO.git" "$APP_DIR"
+        cd "$APP_DIR"
+        log_success "Repository cloned to $APP_DIR"
+    fi
     
     # Make install script executable
     chmod +x install.sh
@@ -73,6 +92,9 @@ main() {
     ./install.sh "$@"
     
     log_success "Bootstrap installation completed!"
+    echo
+    log_info "The AnswerRocket MCP Server has been installed to: $APP_DIR"
+    log_info "You can run the installer directly from this location in the future."
 }
 
 # Run main function with all arguments

@@ -4,10 +4,7 @@ set -e
 
 # Configuration
 PYTHON_VERSION="3.10.7"
-GITHUB_REPO="AnswerrocketKW/mcp-test"
-GITHUB_BRANCH="main"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOCAL_MODE=false
 AR_URL=""
 AR_TOKEN=""
 PROJECT_DIR="$HOME/answerrocket-mcp-server"
@@ -21,10 +18,6 @@ source "$SCRIPT_DIR/lib/copilots.sh"
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --local)
-            LOCAL_MODE=true
-            shift
-            ;;
         --url)
             AR_URL="$2"
             shift 2
@@ -40,13 +33,14 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
-            echo "  --local          Use local repository instead of cloning from GitHub"
             echo "  --url URL        AnswerRocket URL (e.g., https://your-instance.answerrocket.com)"
             echo "  --token TOKEN    AnswerRocket API token"
             echo "  --project-dir DIR Project directory (default: $HOME/answerrocket-mcp-server)"
             echo "  -h, --help       Show this help message"
             echo
             echo "If --url and --token are not provided, you will be prompted for them interactively."
+            echo
+            echo "Note: This installer uses the local repository. For remote installation, use bootstrap.sh"
             exit 0
             ;;
         *)
@@ -74,9 +68,7 @@ get_user_credentials() {
 main() {
     echo "AnswerRocket Multi-Copilot MCP Server Installer"
     echo "================================================"
-    if [ "$LOCAL_MODE" = true ]; then
-        log_info "Running in local mode - using current repository"
-    fi
+    log_info "Using local repository"
     
     # Check system requirements
     check_requirements
@@ -89,7 +81,7 @@ main() {
     get_user_credentials
     
     # Setup project
-    PROJECT_DIR=$(setup_project "$LOCAL_MODE" "$PROJECT_DIR" "$GITHUB_REPO" "$GITHUB_BRANCH" "$SCRIPT_DIR")
+    PROJECT_DIR=$(setup_project_local "$PROJECT_DIR" "$SCRIPT_DIR")
     setup_python_env "$PYTHON_VERSION"
     
     # Validate connection

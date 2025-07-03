@@ -5,7 +5,33 @@
 # Source common utilities
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-# Setup project directory
+# Setup project directory (local mode only)
+setup_project_local() {
+    local project_dir="$1"
+    local script_dir="$2"
+    
+    log_step "Setting up project directory"
+    
+    # Get the repository root
+    local repo_root="$script_dir"
+    # If we're in a subdirectory (like scripts/), go to parent
+    while [ ! -f "$repo_root/pyproject.toml" ] && [ "$repo_root" != "/" ]; do
+        repo_root="$(dirname "$repo_root")"
+    done
+    
+    if [ ! -f "$repo_root/pyproject.toml" ]; then
+        log_error "Could not find pyproject.toml. Please run from the repository root."
+        exit 1
+    fi
+    
+    project_dir="$repo_root"
+    log_info "Using local repository at: $project_dir"
+    cd "$project_dir"
+    log_success "Using local repository"
+    echo "$project_dir"
+}
+
+# Setup project directory (original function for backward compatibility)
 setup_project() {
     local local_mode="$1"
     local project_dir="$2"

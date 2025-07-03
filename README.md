@@ -41,18 +41,24 @@ This project uses a two-stage installation process:
 
 **`bootstrap.sh`** - The entry point script that:
 - Can be downloaded and run with a single `curl` command
-- Clones the full repository to a temporary directory
+- Clones the full repository to a permanent, cross-platform application directory
 - Ensures all required files (`lib/`, `scripts/`, etc.) are available
 - Runs the main installer and passes through any command-line arguments
-- Automatically cleans up temporary files when done
+- Handles updates by fetching the latest changes from the repository
 
 **`install.sh`** - The main installer script that:
 - Performs the actual installation steps listed above
+- Always works with the local repository (no remote cloning)
 - Depends on modular library files in `lib/` and utility scripts in `scripts/`
 - Handles system setup, dependency installation, and MCP server configuration
-- Can be run directly if you already have the repository cloned
+- Used for development work when you have a local clone
 
-The bootstrap approach allows us to maintain clean, modular code while still providing a convenient single-command installation experience.
+**Installation Locations:**
+- **macOS**: `~/Library/Application Support/AnswerRocket/mcp-server`
+- **Linux**: `~/.local/share/answerrocket/mcp-server`
+- **Windows**: `%APPDATA%/AnswerRocket/mcp-server`
+
+The bootstrap approach allows us to maintain clean, modular code while providing a convenient single-command installation experience and proper application directory structure.
 
 ## Manual Installation
 
@@ -240,20 +246,24 @@ To contribute or modify the server:
    ```bash
    git clone https://github.com/answerrocket/mcp-server-demo.git
    cd mcp-server-demo
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -e ".[dev]"
    ```
 
-2. **Run the server locally:**
+2. **Run the installer for development (uses local repository):**
    ```bash
-   python server.py
+   ./install.sh
    ```
 
-3. **Test with the MCP inspector:**
+3. **Run the server locally:**
    ```bash
-   mcp inspect server.py
+   uv run python src/answerrocket_mcp/server.py
    ```
+
+4. **Test with the MCP inspector:**
+   ```bash
+   uv run mcp inspect src/answerrocket_mcp/server.py
+   ```
+
+**Note**: When developing, always use `./install.sh` directly. The `bootstrap.sh` script is only for end-users who want to install from the remote repository.
 
 ## License
 
