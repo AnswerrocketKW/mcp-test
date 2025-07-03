@@ -266,8 +266,12 @@ def main():
         
         print(f"Starting interactive copilot selector with FIFO: {fifo_path}", file=sys.stderr)
         
-        with open(json_file, 'r') as f:
-            copilot_data = json.load(f)
+        try:
+            with open(json_file, 'r') as f:
+                copilot_data = json.load(f)
+        except Exception as e:
+            print(f"Error reading JSON file {json_file}: {e}", file=sys.stderr)
+            sys.exit(1)
             
         selector = CursesCopilotSelector(copilot_data)
         selected = selector.run()
@@ -287,8 +291,18 @@ def main():
     
     # Read copilot data
     if len(sys.argv) > 1:
-        with open(sys.argv[1], 'r') as f:
-            copilot_data = json.load(f)
+        json_file = sys.argv[1]
+        print(f"Reading copilots from file: {json_file}", file=sys.stderr)
+        try:
+            with open(json_file, 'r') as f:
+                content = f.read()
+                if not content:
+                    print(f"Error: JSON file {json_file} is empty", file=sys.stderr)
+                    sys.exit(1)
+                copilot_data = json.loads(content)
+        except Exception as e:
+            print(f"Error reading JSON file {json_file}: {e}", file=sys.stderr)
+            sys.exit(1)
     else:
         copilot_data = json.load(sys.stdin)
     

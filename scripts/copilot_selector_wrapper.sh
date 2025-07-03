@@ -24,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Run the Python script in background with FIFO support
-uv run python select_copilots_interactive.py "$FIFO_PATH" "$COPILOT_JSON_FILE" >/dev/tty </dev/tty &
+uv run python scripts/select_copilots_interactive.py "$FIFO_PATH" "$COPILOT_JSON_FILE" >/dev/tty </dev/tty &
 
 # Capture the process ID
 PYTHON_PID=$!
@@ -33,4 +33,4 @@ PYTHON_PID=$!
 cat "$FIFO_PATH"
 
 # Wait for the Python process to complete
-wait $PYTHON_PID 
+wait $PYTHON_PID
