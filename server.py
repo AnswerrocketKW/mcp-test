@@ -312,10 +312,16 @@ def initialize_skill_tools():
     """Wrapper to run async initialization."""
     asyncio.run(initialize_skill_tools_async())
 
-
-# Initialize all skill tools
 initialize_skill_tools()
 
+@mcp.tool()
+def get_skill_description(skill_id: str) -> Optional[str]:
+    """Get the description of a skill."""
+    skill_info = ar_client.config.get_copilot_skill(
+        copilot_id=COPILOT_ID,
+        copilot_skill_id=str(skill_id),
+        use_published_version=True)
+    return skill_info
 
 if __name__ == "__main__":
     print(f"Starting MCP server for copilot: {COPILOT_NAME} (ID: {COPILOT_ID})")
