@@ -230,6 +230,9 @@ setup_project() {
 setup_python_env() {
     print_step "Setting up Python virtual environment with uv..."
     
+    # Unset VIRTUAL_ENV to avoid path mismatch warnings
+    unset VIRTUAL_ENV
+    
     # Initialize uv project if pyproject.toml doesn't exist
     if [[ ! -f "pyproject.toml" ]]; then
         print_info "Initializing uv project..."
@@ -259,6 +262,9 @@ setup_python_env() {
 # Get copilot metadata
 get_copilot_metadata() {
     print_step "Getting copilot metadata..."
+    
+    # Ensure VIRTUAL_ENV is unset to avoid path mismatch warnings
+    unset VIRTUAL_ENV
     
     # Use the existing get_copilots.py script
     COPILOT_JSON=$(uv run python get_copilots.py "$AR_URL" "$AR_TOKEN")
@@ -302,6 +308,8 @@ select_copilots() {
         if [[ -f "select_copilots_simple.py" ]]; then
             chmod +x select_copilots_simple.py
             print_info "Using simple selection mode..."
+            # Ensure VIRTUAL_ENV is unset to avoid path mismatch warnings
+            unset VIRTUAL_ENV
             SELECTED_COPILOTS=$(uv run python select_copilots_simple.py "$TEMP_JSON")
             SELECTION_STATUS=$?
         else
@@ -320,6 +328,8 @@ select_copilots() {
     fi
     
     # Parse the selected copilots to get IDs and names
+    # Ensure VIRTUAL_ENV is unset to avoid path mismatch warnings
+    unset VIRTUAL_ENV
     COPILOT_DATA=$(echo "$SELECTED_COPILOTS" | uv run python -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -334,6 +344,9 @@ for copilot in data:
 # Install MCP servers for selected copilots
 install_mcp_servers() {
     print_step "Installing MCP servers for selected copilots..."
+    
+    # Ensure VIRTUAL_ENV is unset to avoid path mismatch warnings
+    unset VIRTUAL_ENV
     
     # Check if mcp command is available through uv
     if ! uv run mcp --help > /dev/null 2>&1; then

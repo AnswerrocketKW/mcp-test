@@ -317,11 +317,17 @@ initialize_skill_tools()
 @mcp.tool()
 def get_skill_description(skill_id: str) -> Optional[str]:
     """Get the description of a skill."""
-    skill_info = ar_client.config.get_copilot_skill(
-        copilot_id=COPILOT_ID,
-        copilot_skill_id=str(skill_id),
-        use_published_version=True)
-    return skill_info
+    try:
+        skill_info = ar_client.config.get_copilot_skill(
+            copilot_id=COPILOT_ID,
+            copilot_skill_id=str(skill_id),
+            use_published_version=True)
+        if skill_info:
+            return str(skill_info.description or skill_info.detailed_description or f"No description available for skill {skill_id}")
+        return None
+    except Exception as e:
+        print(f"Error getting skill description for {skill_id}: {e}")
+        return None
 
 if __name__ == "__main__":
     print(f"Starting MCP server for copilot: {COPILOT_NAME} (ID: {COPILOT_ID})")
