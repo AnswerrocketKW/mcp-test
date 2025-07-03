@@ -6,22 +6,6 @@ set -e
 GITHUB_REPO="AnswerrocketKW/mcp-test"
 GITHUB_BRANCH="main"
 
-# Cross-platform application directory
-get_app_dir() {
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-        # Windows
-        echo "$APPDATA/AnswerRocket/mcp-server"
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        echo "$HOME/Library/Application Support/AnswerRocket/mcp-server"
-    else
-        # Linux and other Unix-like systems
-        echo "$HOME/.local/share/answerrocket/mcp-server"
-    fi
-}
-
-APP_DIR=$(get_app_dir)
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -46,6 +30,20 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Cross-platform application directory
+get_app_dir() {
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+        # Windows
+        echo "$APPDATA/AnswerRocket/mcp-server"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        echo "$HOME/Library/Application Support/AnswerRocket/mcp-server"
+    else
+        # Linux and other Unix-like systems
+        echo "$HOME/.local/share/answerrocket/mcp-server"
+    fi
+}
+
 # Main bootstrap function
 main() {
     echo "AnswerRocket MCP Server Bootstrap Installer"
@@ -57,6 +55,9 @@ main() {
         log_error "Git is required but not installed. Please install git first."
         exit 1
     fi
+    
+    # Get application directory
+    APP_DIR=$(get_app_dir)
     
     # Check if directory already exists
     if [[ -d "$APP_DIR" ]]; then
@@ -97,5 +98,5 @@ main() {
     log_info "You can run the installer directly from this location in the future."
 }
 
-# Run main function with all arguments
+# Run main function with all arguments (Homebrew-style execution)
 main "$@" 
