@@ -2,6 +2,9 @@
 
 # Copilot management functions for AnswerRocket MCP Server
 
+# Source common utilities
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
 # Get copilot metadata
 get_copilot_metadata() {
     local ar_url="$1"
@@ -13,7 +16,7 @@ get_copilot_metadata() {
     unset VIRTUAL_ENV
     
     # Use the existing get_copilots.py script
-    local copilot_json=$(uv run python get_copilots.py "$ar_url" "$ar_token")
+    local copilot_json=$(uv run python scripts/get_copilots.py "$ar_url" "$ar_token")
     
     if [[ $? -ne 0 ]]; then
         log_error "Failed to get copilot metadata"
@@ -41,31 +44,15 @@ select_copilots() {
     local selected_copilots=""
     local selection_status=1
     
-    if [[ -f "copilot_selector_wrapper.sh" ]]; then
-        chmod +x copilot_selector_wrapper.sh
+    if [[ -f "scripts/copilot_selector_wrapper.sh" ]]; then
+        chmod +x scripts/copilot_selector_wrapper.sh
         log_info "Launching interactive copilot selector..."
         
-        selected_copilots=$(./copilot_selector_wrapper.sh "$temp_json" 2>/dev/null)
+        selected_copilots=$(./scripts/copilot_selector_wrapper.sh "$temp_json" 2>/dev/null)
         selection_status=$?
         
         if [[ $selection_status -eq 0 ]] && [[ -n "$selected_copilots" ]]; then
             log_success "Interactive copilot selection completed successfully"
-        fi
-    fi
-    
-    # Fallback to simple selector if interactive failed
-    if [[ $selection_status -ne 0 ]] || [[ -z "$selected_copilots" ]]; then
-        if [[ -f "select_copilots_simple.py" ]]; then
-            chmod +x select_copilots_simple.py
-            log_info "Using simple selection mode..."
-            # Ensure VIRTUAL_ENV is unset to avoid path mismatch warnings
-            unset VIRTUAL_ENV
-            selected_copilots=$(uv run python select_copilots_simple.py "$temp_json")
-            selection_status=$?
-        else
-            log_error "No selector found"
-            rm -f "$temp_json"
-            exit 1
         fi
     fi
     
@@ -121,7 +108,7 @@ install_mcp_servers() {
             local safe_copilot_name=$(echo "$copilot_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
             local server_name="${safe_copilot_name}-Assistant"
             
-            if uv run mcp install server.py -n "$server_name" -v "AR_URL=$ar_url" -v "AR_TOKEN=$ar_token" -v "COPILOT_ID=$copilot_id" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"; then
+            if uv run mcp install src/answerrocket_mcp/server.py -n "$server_name" -v "AR_URL=$ar_url" -v "AR_TOKEN=$ar_token" -v "COPILOT_ID=$copilot_id" --with "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"; then
                 log_success "Installed MCP server: $server_name"
                 installed_servers+=("$server_name ($copilot_name)")
             else

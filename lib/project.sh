@@ -2,6 +2,9 @@
 
 # Project setup functions for AnswerRocket MCP Server
 
+# Source common utilities
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
 # Setup project directory
 setup_project() {
     local local_mode="$1"
@@ -87,13 +90,7 @@ validate_connection() {
     # Unset VIRTUAL_ENV to avoid path mismatch warnings
     unset VIRTUAL_ENV
     
-    if AR_URL="$ar_url" AR_TOKEN="$ar_token" uv run python -c "
-from answer_rocket.client import AnswerRocketClient
-client = AnswerRocketClient(url='$ar_url', token='$ar_token')
-if not client.can_connect():
-    exit(1)
-print('Connection successful')
-    " 2>/dev/null; then
+    if AR_URL="$ar_url" AR_TOKEN="$ar_token" uv run python scripts/validate_connection.py 2>/dev/null; then
         log_success "Connected to AnswerRocket successfully"
         return 0
     else

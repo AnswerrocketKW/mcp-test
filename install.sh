@@ -102,7 +102,12 @@ main() {
     COPILOT_DATA=$(select_copilots "$COPILOT_JSON")
     
     # Install MCP servers
-    readarray -t INSTALLED_SERVERS < <(install_mcp_servers "$COPILOT_DATA" "$AR_URL" "$AR_TOKEN")
+    INSTALLED_SERVERS_OUTPUT=$(install_mcp_servers "$COPILOT_DATA" "$AR_URL" "$AR_TOKEN")
+    # Convert output to array using a more portable approach
+    INSTALLED_SERVERS=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && INSTALLED_SERVERS+=("$line")
+    done <<< "$INSTALLED_SERVERS_OUTPUT"
     
     # Success message
     echo

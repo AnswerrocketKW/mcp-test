@@ -2,6 +2,9 @@
 
 # Dependency installation functions for AnswerRocket MCP Server
 
+# Source common utilities
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
 # Install uv package manager
 install_uv() {
     log_step "Installing uv package manager"

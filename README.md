@@ -6,17 +6,22 @@ An MCP (Model Context Protocol) server that provides access to AnswerRocket's an
 
 - 🚀 **Multi-Copilot Architecture**: Automatically creates separate MCP servers for each copilot in your AnswerRocket instance
 - 🎯 **Dedicated Copilot Servers**: Each copilot gets its own MCP server with copilot-specific tools and capabilities  
-- 🤖 **Copilot Management**: Get information about individual copilots and their capabilities
 - 🛠️ **Skill Operations**: List, inspect, and run specific skills within each copilot
 - 💬 **Interactive Q&A**: Ask questions directly to specific AnswerRocket copilots and receive insights
-- 📊 **Rich Responses**: Get both text responses and HTML artifacts for data visualizations
 
 ## Quick Install
 
 Install the AnswerRocket MCP Server with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AnswerrocketKW/mcp-test/refs/heads/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh
+curl -fsSL https://raw.githubusercontent.com/AnswerrocketKW/mcp-test/refs/heads/main/bootstrap.sh | bash
+```
+
+Or if you prefer to download and inspect the script first:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AnswerrocketKW/mcp-test/refs/heads/main/bootstrap.sh -o /tmp/bootstrap.sh
+bash /tmp/bootstrap.sh
 ```
 
 The installer will:
@@ -29,6 +34,25 @@ The installer will:
 7. Install all dependencies (including AnswerRocket SDK from git repository)
 8. Discover all copilots in your AnswerRocket instance
 9. Create and install separate MCP servers for each copilot
+
+### Bootstrap vs Install Scripts
+
+This project uses a two-stage installation process:
+
+**`bootstrap.sh`** - The entry point script that:
+- Can be downloaded and run with a single `curl` command
+- Clones the full repository to a temporary directory
+- Ensures all required files (`lib/`, `scripts/`, etc.) are available
+- Runs the main installer and passes through any command-line arguments
+- Automatically cleans up temporary files when done
+
+**`install.sh`** - The main installer script that:
+- Performs the actual installation steps listed above
+- Depends on modular library files in `lib/` and utility scripts in `scripts/`
+- Handles system setup, dependency installation, and MCP server configuration
+- Can be run directly if you already have the repository cloned
+
+The bootstrap approach allows us to maintain clean, modular code while still providing a convenient single-command installation experience.
 
 ## Manual Installation
 

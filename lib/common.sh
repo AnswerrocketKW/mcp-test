@@ -15,19 +15,19 @@ log_error() {
 }
 
 log_success() {
-    echo -e "${GREEN}SUCCESS: $1${NC}"
+    echo -e "${GREEN}SUCCESS: $1${NC}" >&2
 }
 
 log_info() {
-    echo -e "${BLUE}INFO: $1${NC}"
+    echo -e "${BLUE}INFO: $1${NC}" >&2
 }
 
 log_warning() {
-    echo -e "${YELLOW}WARNING: $1${NC}"
+    echo -e "${YELLOW}WARNING: $1${NC}" >&2
 }
 
 log_step() {
-    echo -e "\n${BLUE}STEP: $1${NC}"
+    echo -e "\n${BLUE}STEP: $1${NC}" >&2
 }
 
 # Check if command exists
@@ -71,7 +71,7 @@ get_ar_url() {
     local ar_url="$1"
     
     if [ -z "$ar_url" ]; then
-        echo
+        echo >&2
         while true; do
             read -p "Please enter your AnswerRocket URL (e.g., https://your-instance.answerrocket.com): " ar_url
             
@@ -106,15 +106,33 @@ get_ar_token() {
     local ar_url="$2"
     
     if [ -z "$ar_token" ]; then
-        echo
+        echo >&2
         log_info "To get your API key:"
-        echo "1. Open this URL in your browser: ${ar_url}/apps/chat/topics?panel=user-info"
-        echo "2. Click 'Generate' under 'Client API Key'"
-        echo "3. Copy the generated API key"
-        echo
+        echo "1. Open this URL in your browser: ${ar_url}/apps/chat/topics?panel=user-info" >&2
+        echo "2. Click 'Generate' under 'Client API Key'" >&2
+        echo "3. Copy the generated API key" >&2
+        echo >&2
         
         while true; do
-            read -p "Please paste your AnswerRocket API token: " ar_token
+            echo -n "Please paste your AnswerRocket API Token: " >&2
+            ar_token=""
+            while IFS= read -r -s -n1 char; do
+                if [[ -z "$char" ]]; then
+                    # Enter pressed
+                    break
+                elif [[ "$char" == $'\177' ]] || [[ "$char" == $'\b' ]]; then
+                    # Backspace
+                    if [[ -n "$ar_token" ]]; then
+                        ar_token="${ar_token%?}"
+                        echo -ne "\b \b" >&2
+                    fi
+                else
+                    # Regular character
+                    ar_token="${ar_token}${char}"
+                    echo -n "*" >&2
+                fi
+            done
+            echo >&2  # New line after token entry
             
             if [[ -z "$ar_token" ]]; then
                 log_warning "API token cannot be empty. Please try again."
