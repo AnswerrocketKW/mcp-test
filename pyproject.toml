@@ -5,9 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10.7"
 dependencies = [
-    "answerrocket-client",
+    "answerrocket-client>=0.2.59",
     "mcp[cli]>=1.10.1",
 ]
-
-[tool.uv.sources]
-answerrocket-client = { git = "ssh://git@github.com/answerrocket/answerrocket-python-client.git", rev = "get-copilots-for-mcp" }

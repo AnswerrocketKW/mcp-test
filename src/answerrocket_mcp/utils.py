@@ -104,7 +104,7 @@ async def build_skill_configs_async(copilot: MaxCopilot, client: AnswerRocketCli
     skill_ids = copilot.copilot_skill_ids
     if not isinstance(skill_ids, list):
         skill_ids = [skill_ids] if skill_ids else []
-    
+    print(skill_ids, file=sys.stderr)
     print(f"Fetching {len(skill_ids)} skills...", file=sys.stderr)
     
     # Fetch all skill info in parallel
@@ -202,10 +202,13 @@ def create_skill_tool_function(
     
     # Add parameter annotations for better MCP integration
     sig_params = []
+    annotations = {}
+    
     for param in skill_config.parameters:
         is_required = param.required
         param_type = param.type_hint if is_required else Optional[param.type_hint]
         default = inspect.Parameter.empty if is_required else None
+        
         sig_params.append(
             inspect.Parameter(
                 param.name,
@@ -214,9 +217,17 @@ def create_skill_tool_function(
                 annotation=param_type
             )
         )
+        # Also add to annotations dict
+        annotations[param.name] = param_type
     
-    # Create proper function signature
-    skill_tool_function.__signature__ = inspect.Signature(sig_params)
+    # Create proper function signature and annotations
+    try:
+        skill_tool_function.__signature__ = inspect.Signature(sig_params)
+        skill_tool_function.__annotations__ = annotations
+    except Exception as e:
+        # Fallback to no signature
+        skill_tool_function.__signature__ = None
+        skill_tool_function.__annotations__ = {}
     
     return skill_tool_function
 

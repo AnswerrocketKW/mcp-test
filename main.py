@@ -27,23 +27,16 @@ def initialize_server():
         print("Please set AR_URL, AR_TOKEN, and COPILOT_ID", file=sys.stderr)
         sys.exit(1)
     
-    try:
-        print("Creating MCP server...", file=sys.stderr)
-        mcp = create_server()
-        print("✓ MCP server created successfully!", file=sys.stderr)
-        return mcp
-        
-    except Exception as e:
-        print(f"✗ Error: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    print("Creating MCP server...", file=sys.stderr)
+    mcp = create_server()
+    print("✓ MCP server created successfully!", file=sys.stderr)
+    return mcp
 
 def main():
     """Main entry point when running as a script."""
     server = initialize_server()
     if server:
         print("Starting MCP server...", file=sys.stderr)
-        server.run()
+        server.run(transport="http", host="0.0.0.0", port=4200, path="/mcp", log_level="debug")
 
 main()

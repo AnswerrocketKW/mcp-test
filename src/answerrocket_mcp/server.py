@@ -3,7 +3,8 @@
 import asyncio
 import sys
 from typing import List, Optional
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
+from fastmcp.tools.tool import Tool
 from answer_rocket.client import AnswerRocketClient
 from answer_rocket.graphql.schema import MaxCopilot
 
@@ -77,18 +78,19 @@ class AnswerRocketMCPServer:
             # Create annotations
             annotations = create_tool_annotations(skill_config)
             
-            # Add the tool with annotations
-            self.mcp.add_tool(
+            # Create Tool object and add it
+            tool = Tool.from_function(
                 tool_func,
                 name=skill_config.tool_name,
                 description=skill_config.detailed_description,
                 annotations=annotations
             )
+            self.mcp.add_tool(tool)
             
             # Log parameter info
             param_count = len(skill_config.parameters)
             param_info = f" with {param_count} parameters" if param_count > 0 else ""
-            print(f"✅ Created tool for skill: {skill_config.skill_name} ({skill_config.tool_name}){param_info}", 
+            print(f"Created tool for skill: {skill_config.skill_name} ({skill_config.tool_name}){param_info}", 
                   file=sys.stderr)
             
             if param_count > 0:
@@ -100,6 +102,8 @@ class AnswerRocketMCPServer:
             
             return True
         except Exception as e:
+            import traceback
+            print(traceback.format_exc(), file=sys.stderr)
             print(f"❌ Error registering tool for skill {skill_config.skill_name}: {e}", file=sys.stderr)
             return False
     
@@ -111,14 +115,13 @@ class AnswerRocketMCPServer:
                 for skill_config in self.skill_configs
             ])
             success_count = sum(1 for result in results if result)
-            print(f"🚀 Successfully initialized {success_count}/{len(self.skill_configs)} skill tools", 
+            print(f"Successfully initialized {success_count}/{len(self.skill_configs)} skill tools", 
                   file=sys.stderr)
         
         asyncio.run(register_all())
     
     def _add_skill_description_tool(self):
         """Add the get_skill_description tool."""
-        @self.mcp.tool()
         def get_skill_description(skill_id: str) -> Optional[str]:
             """Get the description of a skill."""
             try:
@@ -134,6 +137,14 @@ class AnswerRocketMCPServer:
             except Exception as e:
                 print(f"Error getting skill description for {skill_id}: {e}", file=sys.stderr)
                 return None
+        
+        # Create Tool object and add it
+        tool = Tool.from_function(
+            get_skill_description,
+            name="get_skill_description",
+            description="Get the description of a skill."
+        )
+        self.mcp.add_tool(tool)
 
 
 def create_server() -> FastMCP:
