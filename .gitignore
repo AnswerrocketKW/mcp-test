@@ -6,6 +6,7 @@ __pycache__/
 .Python
 .venv/
 venv/
+server/venv/
 ENV/
 env/
 .eggs/
@@ -44,3 +45,6 @@ mcp.json
 
 # uv
 uv.lock
+
+# DXT
+server/lib/

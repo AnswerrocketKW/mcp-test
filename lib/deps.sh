@@ -76,9 +76,9 @@ setup_python_env() {
         uv init --python "$python_version"
     fi
     
-    # Create virtual environment with uv
+    # Create virtual environment with uv in server/venv
     log_info "Creating virtual environment..."
-    uv venv --python "$python_version"
+    uv venv server/venv --python "$python_version"
     
     log_success "Virtual environment created with Python $python_version"
     
@@ -89,6 +89,11 @@ setup_python_env() {
     log_info "Installing MCP with CLI support..."
     uv add "mcp[cli]"
     log_success "Installed mcp[cli]"
+
+    #install fastmcp
+    log_info "Installing fastmcp..."
+    uv add "fastmcp"
+    log_success "Installed fastmcp"
     
     # Install answerrocket-client from git repository
     log_info "Installing answerrocket-client from git repository..."

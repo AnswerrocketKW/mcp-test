@@ -23,7 +23,7 @@ uv run python get_copilots.py "AR_URL" "AR_TOKEN"
 ### Installation & Setup
 ```bash
 # Install dependencies using uv
-uv venv --python 3.10.7
+uv venv server/venv --python 3.10.7
 uv add "mcp[cli]"
 uv add "git+ssh://git@github.com/answerrocket/answerrocket-python-client.git@get-copilots-for-mcp"
 
