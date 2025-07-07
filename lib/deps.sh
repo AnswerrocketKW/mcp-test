@@ -89,11 +89,6 @@ setup_python_env() {
     log_info "Installing MCP with CLI support..."
     uv add "mcp[cli]"
     log_success "Installed mcp[cli]"
-
-    #install fastmcp
-    log_info "Installing fastmcp..."
-    uv add "fastmcp"
-    log_success "Installed fastmcp"
     
     # Install answerrocket-client from git repository
     log_info "Installing answerrocket-client from git repository..."
