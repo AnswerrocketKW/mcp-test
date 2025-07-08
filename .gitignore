@@ -48,3 +48,4 @@ uv.lock
 
 # DXT
 server/lib/
+.dxt
